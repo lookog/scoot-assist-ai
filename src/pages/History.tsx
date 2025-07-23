@@ -8,6 +8,7 @@ import { Search, MessageCircle, Clock, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
 import { useNavigate } from "react-router-dom";
+import { EscalationNotifications } from '@/components/EscalationNotifications';
 
 interface ChatSession {
   id: string;
@@ -18,6 +19,7 @@ interface ChatSession {
   session_summary: string | null;
   message_count?: number;
   last_message?: string;
+  escalated_queries?: Array<{ status: string }>;
 }
 
 const History = () => {
@@ -40,7 +42,8 @@ const History = () => {
         .from('chat_sessions')
         .select(`
           *,
-          messages(count)
+          messages(count),
+          escalated_queries(status)
         `)
         .eq('user_id', user?.id)
         .order('updated_at', { ascending: false });
@@ -61,7 +64,8 @@ const History = () => {
           return {
             ...session,
             message_count: session.messages?.[0]?.count || 0,
-            last_message: lastMessage?.content || 'No messages'
+            last_message: lastMessage?.content || 'No messages',
+            escalated_queries: session.escalated_queries || []
           };
         })
       );
@@ -148,11 +152,14 @@ const History = () => {
   return (
     <div className="p-4 space-y-4">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-foreground mb-2">Chat History</h1>
-        <p className="text-muted-foreground">
-          View and search your previous conversations
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground mb-2">Chat History</h1>
+          <p className="text-muted-foreground">
+            View and search your previous conversations
+          </p>
+        </div>
+        <EscalationNotifications />
       </div>
 
       {/* Search */}
@@ -189,12 +196,18 @@ const History = () => {
             </CardContent>
           </Card>
         ) : (
-          filteredSessions.map((session) => (
-            <Card 
-              key={session.id} 
-              className="cursor-pointer hover:bg-muted/50 transition-colors"
-              onClick={() => openChat(session.id)}
-            >
+          filteredSessions.map((session) => {
+            const hasEscalatedQuery = session.escalated_queries && session.escalated_queries.length > 0;
+            const pendingEscalation = hasEscalatedQuery && session.escalated_queries.some(eq => eq.status === 'pending');
+            
+            return (
+              <Card 
+                key={session.id} 
+                className={`cursor-pointer hover:bg-muted/50 transition-colors ${
+                  pendingEscalation ? 'border-yellow-500 bg-yellow-50 dark:bg-yellow-950/20' : ''
+                }`}
+                onClick={() => openChat(session.id)}
+              >
               <CardContent className="p-4">
                 <div className="flex items-start justify-between mb-2">
                   <div className="flex-1">
@@ -230,15 +243,26 @@ const History = () => {
                     </div>
                   </div>
                   
-                  {session.is_active && (
-                    <Badge variant="secondary" className="text-xs">
-                      Active
-                    </Badge>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {hasEscalatedQuery && (
+                      <Badge 
+                        variant={pendingEscalation ? "destructive" : "secondary"} 
+                        className="text-xs"
+                      >
+                        {pendingEscalation ? 'Escalated' : 'Resolved'}
+                      </Badge>
+                    )}
+                    {session.is_active && (
+                      <Badge variant="secondary" className="text-xs">
+                        Active
+                      </Badge>
+                    )}
+                  </div>
                 </div>
               </CardContent>
             </Card>
-          ))
+            );
+          })
         )}
       </div>
     </div>

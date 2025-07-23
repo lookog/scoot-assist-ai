@@ -16,6 +16,7 @@ import { ConfidenceIndicator } from '@/components/ConfidenceIndicator';
 import { FileUpload, type FileUploadData } from '@/components/FileUpload';
 import { FilePreview } from '@/components/FilePreview';
 import { TypingIndicator } from '@/components/TypingIndicator';
+import { EscalationNotifications } from '@/components/EscalationNotifications';
 import OrderInquiryForm from '@/components/OrderInquiryForm';
 
 interface Message {
@@ -246,7 +247,7 @@ export default function Chat() {
       file_attachments: filesToAttach,
     };
 
-    setMessages(prev => [...prev, userMessage]);
+    // Don't add user message to state here - wait for database confirmation and real-time update
     setLastUserQuestion(textToSend);
     if (!messageText) {
       setInput('');
@@ -423,15 +424,18 @@ export default function Chat() {
             </div>
           </div>
           
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={startNewChat}
-            className="flex items-center gap-2"
-          >
-            <Plus className="h-4 w-4" />
-            New Chat
-          </Button>
+          <div className="flex items-center gap-2">
+            <EscalationNotifications sessionId={sessionId || undefined} />
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={startNewChat}
+              className="flex items-center gap-2"
+            >
+              <Plus className="h-4 w-4" />
+              New Chat
+            </Button>
+          </div>
         </div>
       </div>
 

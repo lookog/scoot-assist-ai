@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { ThumbsUp, ThumbsDown } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
@@ -15,6 +15,34 @@ export function MessageRating({ messageId, onRate }: MessageRatingProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
   const { user } = useAuth();
+
+  // Load existing rating on component mount
+  useEffect(() => {
+    const loadExistingRating = async () => {
+      if (!user || !messageId) return;
+      
+      try {
+        const { data } = await supabase
+          .from('user_interactions')
+          .select('metadata')
+          .eq('user_id', user.id)
+          .like('metadata', `%"message_id":"${messageId}"%`)
+          .eq('interaction_type', 'question_asked')
+          .single();
+          
+        if (data?.metadata) {
+          const metadata = data.metadata as Record<string, any>;
+          if (metadata.action_type === 'rating' && metadata.is_helpful !== undefined) {
+            setRating(metadata.is_helpful);
+          }
+        }
+      } catch (error) {
+        // No existing rating found, which is fine
+      }
+    };
+    
+    loadExistingRating();
+  }, [user, messageId]);
 
   const handleRate = async (isHelpful: boolean) => {
     if (!user || isSubmitting) return;
