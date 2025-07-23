@@ -1,36 +1,47 @@
-import { useState, useEffect, useRef } from "react";
-import { useAuth } from "@/hooks/useAuth";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card } from "@/components/ui/card";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Send, Bot, User } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
-import { useToast } from "@/components/ui/use-toast";
-import { useParams, useNavigate } from "react-router-dom";
+import { useState, useEffect, useRef } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
+import { useToast } from '@/hooks/use-toast';
+import { useParams, useNavigate } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Card } from '@/components/ui/card';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Send, Bot, User, ArrowLeft } from 'lucide-react';
+import { MessageRating } from '@/components/MessageRating';
+import { QueryEscalation } from '@/components/QueryEscalation';
+import { SuggestedQuestions } from '@/components/SuggestedQuestions';
+import { ConfidenceIndicator } from '@/components/ConfidenceIndicator';
 
 interface Message {
   id: string;
   content: string;
-  message_type: 'user' | 'assistant' | 'system';
-  created_at: string;
+  type: 'user' | 'assistant';
+  timestamp: string;
   session_id: string;
+  confidence_score?: number;
+  response_source?: string;
+  metadata?: {
+    suggested_questions?: string[];
+  };
 }
 
-const Chat = () => {
-  const { user } = useAuth();
-  const { toast } = useToast();
-  const navigate = useNavigate();
-  const { sessionId: urlSessionId } = useParams();
+export default function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
-  const [newMessage, setNewMessage] = useState("");
+  const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>([]);
+  const [lastUserQuestion, setLastUserQuestion] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const { sessionId: urlSessionId } = useParams();
+  const navigate = useNavigate();
   const channelRef = useRef<any>(null);
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
   useEffect(() => {
@@ -41,8 +52,8 @@ const Chat = () => {
     if (user) {
       initializeChat();
     }
+    
     return () => {
-      // Cleanup realtime subscription on unmount
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current);
       }
@@ -54,7 +65,6 @@ const Chat = () => {
       let currentSessionId = urlSessionId;
 
       if (urlSessionId) {
-        // Check if the session exists and belongs to the user
         const { data: existingSession, error: sessionError } = await supabase
           .from('chat_sessions')
           .select('*')
@@ -70,7 +80,6 @@ const Chat = () => {
         
         currentSessionId = existingSession.id;
       } else {
-        // Check if user has an active session, or create a new one
         let { data: activeSession } = await supabase
           .from('chat_sessions')
           .select('*')
@@ -81,7 +90,6 @@ const Chat = () => {
           .single();
 
         if (!activeSession) {
-          // Create a new chat session
           const { data: newSession, error } = await supabase
             .from('chat_sessions')
             .insert({
@@ -101,16 +109,12 @@ const Chat = () => {
       }
 
       setSessionId(currentSessionId);
-      
-      // Load existing messages for this session
       await loadMessages(currentSessionId);
       
-      // Clean up previous channel
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current);
       }
       
-      // Set up real-time subscription
       const channel = supabase
         .channel(`chat-messages-${currentSessionId}`)
         .on(
@@ -124,10 +128,21 @@ const Chat = () => {
           (payload) => {
             console.log('New message received:', payload.new);
             setMessages(prev => {
-              // Avoid duplicates
               const exists = prev.find(msg => msg.id === payload.new.id);
               if (exists) return prev;
-              return [...prev, payload.new as Message];
+              
+              const newMessage: Message = {
+                id: payload.new.id,
+                content: payload.new.content,
+                type: payload.new.message_type === 'user' ? 'user' : 'assistant',
+                timestamp: payload.new.created_at,
+                session_id: payload.new.session_id,
+                confidence_score: (payload.new.metadata as any)?.confidence_score,
+                response_source: (payload.new.metadata as any)?.response_source,
+                metadata: (payload.new.metadata as any)
+              };
+              
+              return [...prev, newMessage];
             });
           }
         )
@@ -137,7 +152,6 @@ const Chat = () => {
     } catch (error) {
       console.error('Error initializing chat:', error);
       toast({
-        title: "Error",
         description: "Failed to initialize chat",
         variant: "destructive",
       });
@@ -153,98 +167,103 @@ const Chat = () => {
         .order('created_at', { ascending: true });
 
       if (error) throw error;
-      setMessages(data || []);
+      
+      const formattedMessages: Message[] = (data || []).map(msg => ({
+        id: msg.id,
+        content: msg.content,
+        type: msg.message_type === 'user' ? 'user' : 'assistant',
+        timestamp: msg.created_at,
+        session_id: msg.session_id,
+        confidence_score: (msg.metadata as any)?.confidence_score,
+        response_source: (msg.metadata as any)?.response_source,
+        metadata: (msg.metadata as any)
+      }));
+      
+      setMessages(formattedMessages);
     } catch (error) {
       console.error('Error loading messages:', error);
     }
   };
 
-  const sendMessage = async () => {
-    if (!newMessage.trim() || !sessionId || !user) return;
+  const sendMessage = async (messageText?: string) => {
+    const textToSend = messageText || input.trim();
+    if (!textToSend || !sessionId || !user) return;
 
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      content: textToSend,
+      type: 'user',
+      timestamp: new Date().toISOString(),
+      session_id: sessionId,
+    };
+
+    setMessages(prev => [...prev, userMessage]);
+    setLastUserQuestion(textToSend);
+    if (!messageText) setInput('');
     setIsLoading(true);
+    setSuggestedQuestions([]);
+
     try {
-      // Update session to set proper title on first message
-      if (messages.length === 0) {
+      await supabase.from('messages').insert({
+        session_id: sessionId,
+        message_type: 'user',
+        content: textToSend,
+      });
+
+      const isFirstMessage = messages.length === 0;
+      if (isFirstMessage) {
         await supabase
           .from('chat_sessions')
-          .update({ 
-            title: newMessage.slice(0, 50) + (newMessage.length > 50 ? '...' : ''),
-            updated_at: new Date().toISOString()
+          .update({
+            title: textToSend.substring(0, 100),
+            updated_at: new Date().toISOString(),
           })
           .eq('id', sessionId);
       } else {
-        // Update session updated_at timestamp
         await supabase
           .from('chat_sessions')
-          .update({ updated_at: new Date().toISOString() })
+          .update({
+            updated_at: new Date().toISOString(),
+          })
           .eq('id', sessionId);
       }
 
-      // Add user message
-      const { error: userMsgError } = await supabase
-        .from('messages')
-        .insert({
-          session_id: sessionId,
-          content: newMessage,
-          message_type: 'user'
-        });
+      const response = await supabase.functions.invoke('chat-assistant', {
+        body: {
+          query: textToSend,
+          sessionId: sessionId,
+          userId: user.id
+        }
+      });
 
-      if (userMsgError) throw userMsgError;
+      if (response.error) throw response.error;
 
-      const userMessage = newMessage;
-      setNewMessage("");
+      const { response: aiResponse, confidence, suggestedQuestions: newSuggestions } = response.data;
+      
+      const assistantMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        content: aiResponse,
+        type: 'assistant',
+        timestamp: new Date().toISOString(),
+        session_id: sessionId,
+        confidence_score: confidence,
+        metadata: {
+          suggested_questions: newSuggestions
+        }
+      };
 
-      // Simulate AI response (replace with actual AI integration later)
-      setTimeout(async () => {
-        const aiResponse = generateMockResponse(userMessage);
-        
-        const { error: aiMsgError } = await supabase
-          .from('messages')
-          .insert({
-            session_id: sessionId,
-            content: aiResponse,
-            message_type: 'assistant'
-          });
-
-        if (aiMsgError) throw aiMsgError;
-        
-        // Update session timestamp after AI response
-        await supabase
-          .from('chat_sessions')
-          .update({ updated_at: new Date().toISOString() })
-          .eq('id', sessionId);
-          
-        setIsLoading(false);
-      }, 1000);
+      setMessages(prev => [...prev, assistantMessage]);
+      setSuggestedQuestions(newSuggestions || []);
 
     } catch (error) {
       console.error('Error sending message:', error);
       toast({
-        title: "Error",
-        description: "Failed to send message",
+        description: "Failed to send message. Please try again.",
         variant: "destructive",
       });
+    } finally {
       setIsLoading(false);
     }
-  };
-
-  const generateMockResponse = (userMessage: string): string => {
-    const responses = [
-      "I understand you're having issues with your scooter. Let me help you with that.",
-      "That's a great question! Here's what I recommend for your scooter maintenance.",
-      "I can help you troubleshoot that problem. Have you tried checking the battery connection?",
-      "For warranty issues, I'll need to gather some information about your scooter model and purchase date.",
-      "Safety is our top priority. Here are the steps you should follow for that issue."
-    ];
-    return responses[Math.floor(Math.random() * responses.length)];
-  };
-
-  const formatTime = (timestamp: string) => {
-    return new Date(timestamp).toLocaleTimeString([], { 
-      hour: '2-digit', 
-      minute: '2-digit' 
-    });
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -254,11 +273,30 @@ const Chat = () => {
     }
   };
 
+  const handleSuggestedQuestion = (question: string) => {
+    sendMessage(question);
+  };
+
+  const formatTime = (timestamp: string) => {
+    return new Date(timestamp).toLocaleTimeString([], { 
+      hour: '2-digit', 
+      minute: '2-digit' 
+    });
+  };
+
+
+  if (!user) {
+    return <div className="flex items-center justify-center h-full">Please log in to access chat.</div>;
+  }
+
   return (
     <div className="flex flex-col h-full bg-background">
       {/* Header */}
       <div className="border-b bg-card p-4">
         <div className="flex items-center gap-3">
+          <Button variant="ghost" size="sm" onClick={() => navigate('/history')}>
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
           <Avatar className="h-8 w-8">
             <AvatarFallback className="bg-primary text-primary-foreground">
               <Bot className="h-4 w-4" />
@@ -279,66 +317,71 @@ const Chat = () => {
           <div className="text-center text-muted-foreground py-8">
             <Bot className="h-12 w-12 mx-auto mb-4 text-primary" />
             <h3 className="font-semibold mb-2">Welcome to ScootAssist AI</h3>
-            <p className="text-sm">
-              I'm here to help you with your scooter questions and support needs.
-              Ask me anything!
+            <p className="text-sm max-w-md mx-auto">
+              I'm here to help you with your scooter questions and support needs. 
+              Ask me anything about your scooter, warranty, maintenance, or troubleshooting!
             </p>
           </div>
         ) : (
-          messages.map((message) => (
-            <div
-              key={message.id}
-              className={`flex gap-3 ${
-                message.message_type === 'user' ? 'justify-end' : 'justify-start'
-              }`}
-            >
-              {message.message_type === 'assistant' && (
-                <Avatar className="h-8 w-8">
-                  <AvatarFallback className="bg-primary text-primary-foreground">
-                    <Bot className="h-4 w-4" />
-                  </AvatarFallback>
-                </Avatar>
-              )}
-              
+          <div className="space-y-4">
+            {messages.map((message) => (
               <div
-                className={`max-w-[80%] ${
-                  message.message_type === 'user'
-                    ? 'order-2'
-                    : 'order-1'
+                key={message.id}
+                className={`flex items-start gap-3 ${
+                  message.type === 'user' ? 'flex-row-reverse' : ''
                 }`}
               >
-                <Card
-                  className={`p-3 ${
-                    message.message_type === 'user'
-                      ? 'bg-primary text-primary-foreground ml-auto'
-                      : 'bg-muted'
-                  }`}
-                >
-                  <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-                </Card>
-                <p className={`text-xs text-muted-foreground mt-1 ${
-                  message.message_type === 'user' ? 'text-right' : 'text-left'
-                }`}>
-                  {formatTime(message.created_at)}
-                </p>
-              </div>
-
-              {message.message_type === 'user' && (
-                <Avatar className="h-8 w-8 order-3">
-                  <AvatarFallback className="bg-secondary text-secondary-foreground">
-                    <User className="h-4 w-4" />
+                <Avatar className="h-8 w-8">
+                  <AvatarFallback>
+                    {message.type === 'user' ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
                   </AvatarFallback>
                 </Avatar>
-              )}
-            </div>
-          ))
+                <div className="flex flex-col gap-2 max-w-[70%]">
+                  <div
+                    className={`p-3 rounded-lg ${
+                      message.type === 'user'
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-muted'
+                    }`}
+                  >
+                    <p className="text-sm">{message.content}</p>
+                    <div className="flex items-center justify-between mt-2">
+                      <p className="text-xs opacity-70">
+                        {formatTime(message.timestamp)}
+                      </p>
+                      {message.type === 'assistant' && message.confidence_score && (
+                        <ConfidenceIndicator 
+                          confidence={message.confidence_score}
+                          source={message.response_source}
+                        />
+                      )}
+                    </div>
+                  </div>
+                  
+                  {message.type === 'assistant' && (
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center gap-2">
+                        <MessageRating messageId={message.id} />
+                      </div>
+                      
+                      {message.metadata?.suggested_questions && (
+                        <SuggestedQuestions
+                          questions={message.metadata.suggested_questions}
+                          onQuestionSelect={handleSuggestedQuestion}
+                        />
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
         )}
         
-        {/* Loading indicator */}
         {isLoading && (
-          <div className="flex gap-3">
+          <div className="flex items-start gap-3">
             <Avatar className="h-8 w-8">
-              <AvatarFallback className="bg-primary text-primary-foreground">
+              <AvatarFallback>
                 <Bot className="h-4 w-4" />
               </AvatarFallback>
             </Avatar>
@@ -354,28 +397,40 @@ const Chat = () => {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input */}
-      <div className="border-t bg-card p-4">
+      {/* Input area */}
+      <div className="border-t bg-background p-4">
+        {suggestedQuestions.length > 0 && (
+          <div className="mb-4">
+            <SuggestedQuestions
+              questions={suggestedQuestions}
+              onQuestionSelect={handleSuggestedQuestion}
+            />
+          </div>
+        )}
+        
         <div className="flex gap-2">
           <Input
-            value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
             onKeyPress={handleKeyPress}
             placeholder="Type your message..."
             disabled={isLoading}
             className="flex-1"
           />
-          <Button
-            onClick={sendMessage}
-            disabled={!newMessage.trim() || isLoading}
-            size="icon"
-          >
+          <Button onClick={() => sendMessage()} disabled={isLoading || !input.trim()}>
             <Send className="h-4 w-4" />
           </Button>
         </div>
+        
+        {lastUserQuestion && (
+          <div className="mt-3 flex justify-center">
+            <QueryEscalation 
+              sessionId={sessionId || ''} 
+              originalQuestion={lastUserQuestion}
+            />
+          </div>
+        )}
       </div>
     </div>
   );
-};
-
-export default Chat;
+}
