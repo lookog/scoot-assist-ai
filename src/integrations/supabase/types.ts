@@ -675,6 +675,10 @@ export type Database = {
         Args: { user_id: string }
         Returns: boolean
       }
+      update_session_status: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
     }
     Enums: {
       escalation_status:
