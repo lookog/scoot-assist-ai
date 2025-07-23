@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Send, Bot, User, ArrowLeft, Package } from 'lucide-react';
+import { Send, Bot, User, ArrowLeft, Package, Plus, Paperclip } from 'lucide-react';
 import { MessageRating } from '@/components/MessageRating';
 import { QueryEscalation } from '@/components/QueryEscalation';
 import { SuggestedQuestions } from '@/components/SuggestedQuestions';
@@ -371,6 +371,44 @@ export default function Chat() {
     });
   };
 
+  const startNewChat = async () => {
+    try {
+      // Mark current session as inactive
+      if (sessionId) {
+        await supabase
+          .from('chat_sessions')
+          .update({ is_active: false })
+          .eq('id', sessionId);
+      }
+
+      // Create new session
+      const { data: newSession, error } = await supabase
+        .from('chat_sessions')
+        .insert({
+          user_id: user?.id,
+          title: 'New Chat',
+          is_active: true
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Navigate to new session
+      navigate(`/chat/${newSession.id}`);
+      
+      toast({
+        description: "Started new chat session",
+      });
+    } catch (error) {
+      console.error('Error starting new chat:', error);
+      toast({
+        description: "Failed to start new chat",
+        variant: "destructive",
+      });
+    }
+  };
+
 
   if (!user) {
     return <div className="flex items-center justify-center h-full">Please log in to access chat.</div>;
@@ -380,21 +418,33 @@ export default function Chat() {
     <div className="flex flex-col h-full bg-background">
       {/* Header */}
       <div className="border-b bg-card p-4">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="sm" onClick={() => navigate('/history')}>
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <Avatar className="h-8 w-8">
-            <AvatarFallback className="bg-primary text-primary-foreground">
-              <Bot className="h-4 w-4" />
-            </AvatarFallback>
-          </Avatar>
-          <div>
-            <h1 className="font-semibold text-foreground">ScootAssist AI</h1>
-            <p className="text-sm text-muted-foreground">
-              {isLoading ? "Typing..." : "Online"}
-            </p>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Button variant="ghost" size="sm" onClick={() => navigate('/history')}>
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+            <Avatar className="h-8 w-8">
+              <AvatarFallback className="bg-primary text-primary-foreground">
+                <Bot className="h-4 w-4" />
+              </AvatarFallback>
+            </Avatar>
+            <div>
+              <h1 className="font-semibold text-foreground">ScootAssist AI</h1>
+              <p className="text-sm text-muted-foreground">
+                {isLoading ? "Typing..." : "Online"}
+              </p>
+            </div>
           </div>
+          
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={startNewChat}
+            className="flex items-center gap-2"
+          >
+            <Plus className="h-4 w-4" />
+            New Chat
+          </Button>
         </div>
       </div>
 
@@ -512,33 +562,32 @@ export default function Chat() {
           />
         )}
 
-        {/* Pending Files */}
+        {/* Pending Files - More compact display */}
         {pendingFiles.length > 0 && (
-          <div className="space-y-2">
+          <div className="bg-muted/50 rounded-lg p-3 space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">Files to send ({pendingFiles.length})</span>
+              <span className="text-xs font-medium text-muted-foreground">
+                {pendingFiles.length} file(s) ready to send
+              </span>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => setPendingFiles([])}
-                className="text-xs"
+                className="h-6 px-2 text-xs"
               >
                 Clear all
               </Button>
             </div>
-            <div className="grid gap-2 max-h-48 overflow-y-auto">
+            <div className="flex flex-wrap gap-2">
               {pendingFiles.map((file) => (
-                <div key={file.id} className="relative">
-                  <FilePreview
-                    fileData={file}
-                    showPreview={false}
-                    className="pr-8"
-                  />
+                <div key={file.id} className="relative bg-background rounded border p-2 flex items-center gap-2 text-xs">
+                  <Paperclip className="h-3 w-3" />
+                  <span className="truncate max-w-24">{file.fileName}</span>
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={() => removePendingFile(file.id)}
-                    className="absolute top-2 right-2 h-6 w-6 p-0"
+                    className="h-4 w-4 p-0 ml-1"
                   >
                     ×
                   </Button>
@@ -547,50 +596,59 @@ export default function Chat() {
             </div>
           </div>
         )}
-
-        {/* File Upload */}
-        {sessionId && (
-          <FileUpload
-            sessionId={sessionId}
-            onFileUpload={handleFileUpload}
-            className="mb-4"
-          />
-        )}
         
-        <div className="flex gap-2">
-          <Input
-            value={input}
-            onChange={(e) => {
-              setInput(e.target.value);
+        <div className="flex gap-2 items-end">
+          <div className="flex-1 space-y-2">
+            {/* Main input with integrated file upload */}
+            <div className="flex gap-2">
+              <Input
+                value={input}
+                onChange={(e) => {
+                  setInput(e.target.value);
+                  
+                  // Handle typing indicator
+                  const hasText = e.target.value.trim().length > 0;
+                  if (hasText && !isTyping) {
+                    setIsTyping(true);
+                    updateTypingStatus(true);
+                  } else if (!hasText && isTyping) {
+                    setIsTyping(false);
+                    updateTypingStatus(false);
+                  }
+                }}
+                onKeyPress={handleKeyPress}
+                placeholder="Type your message..."
+                disabled={isLoading}
+                className="flex-1"
+              />
               
-              // Handle typing indicator
-              const hasText = e.target.value.trim().length > 0;
-              if (hasText && !isTyping) {
-                setIsTyping(true);
-                updateTypingStatus(true);
-              } else if (!hasText && isTyping) {
-                setIsTyping(false);
-                updateTypingStatus(false);
-              }
-            }}
-            onKeyPress={handleKeyPress}
-            placeholder="Type your message..."
-            disabled={isLoading}
-            className="flex-1"
-          />
-          <Button 
-            variant="outline" 
-            onClick={() => setShowOrderInquiry(!showOrderInquiry)}
-            className="px-3"
-          >
-            <Package className="h-4 w-4" />
-          </Button>
-          <Button 
-            onClick={() => sendMessage()} 
-            disabled={isLoading || (!input.trim() && pendingFiles.length === 0)}
-          >
-            <Send className="h-4 w-4" />
-          </Button>
+              {/* File Upload Button */}
+              {sessionId && (
+                <div className="flex items-center">
+                  <FileUpload
+                    sessionId={sessionId}
+                    onFileUpload={handleFileUpload}
+                    className=""
+                    compact={true}
+                  />
+                </div>
+              )}
+              
+              <Button 
+                variant="outline" 
+                onClick={() => setShowOrderInquiry(!showOrderInquiry)}
+                className="px-3"
+              >
+                <Package className="h-4 w-4" />
+              </Button>
+              <Button 
+                onClick={() => sendMessage()} 
+                disabled={isLoading || (!input.trim() && pendingFiles.length === 0)}
+              >
+                <Send className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
         </div>
         
         {showOrderInquiry && (

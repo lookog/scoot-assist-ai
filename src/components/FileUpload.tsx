@@ -5,13 +5,14 @@ import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Card } from '@/components/ui/card';
-import { X, Upload, File, Image, Video, FileText } from 'lucide-react';
+import { X, Upload, File, Image, Video, FileText, Paperclip } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface FileUploadProps {
   sessionId: string;
   onFileUpload?: (fileData: FileUploadData) => void;
   className?: string;
+  compact?: boolean;
 }
 
 export interface FileUploadData {
@@ -41,7 +42,7 @@ const SUPPORTED_FILE_TYPES = {
   'text/csv': { icon: FileText, label: 'CSV File' },
 };
 
-export function FileUpload({ sessionId, onFileUpload, className }: FileUploadProps) {
+export function FileUpload({ sessionId, onFileUpload, className, compact = false }: FileUploadProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [uploadingFiles, setUploadingFiles] = useState<Map<string, { progress: number; file: File }>>(new Map());
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -200,6 +201,37 @@ export function FileUpload({ sessionId, onFileUpload, className }: FileUploadPro
     const IconComponent = fileInfo?.icon || File;
     return <IconComponent className="h-4 w-4" />;
   };
+
+  // Compact mode - just a button
+  if (compact) {
+    return (
+      <div className={className}>
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          accept={Object.keys(SUPPORTED_FILE_TYPES).join(',')}
+          onChange={handleFileSelect}
+          className="hidden"
+        />
+        
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => fileInputRef.current?.click()}
+          className="px-3"
+          disabled={uploadingFiles.size > 0}
+        >
+          <Paperclip className="h-4 w-4" />
+          {uploadingFiles.size > 0 && (
+            <div className="ml-1 w-4 h-4">
+              <div className="w-full h-full border-2 border-muted rounded-full border-t-primary animate-spin" />
+            </div>
+          )}
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className={className}>
