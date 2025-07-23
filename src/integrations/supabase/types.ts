@@ -143,10 +143,68 @@ export type Database = {
           },
         ]
       }
+      file_uploads: {
+        Row: {
+          created_at: string
+          file_name: string
+          file_size: number
+          file_type: string
+          id: string
+          message_id: string | null
+          metadata: Json | null
+          session_id: string
+          storage_path: string
+          upload_status: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          file_name: string
+          file_size: number
+          file_type: string
+          id?: string
+          message_id?: string | null
+          metadata?: Json | null
+          session_id: string
+          storage_path: string
+          upload_status?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          file_name?: string
+          file_size?: number
+          file_type?: string
+          id?: string
+          message_id?: string | null
+          metadata?: Json | null
+          session_id?: string
+          storage_path?: string
+          upload_status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "file_uploads_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "file_uploads_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "chat_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       messages: {
         Row: {
           content: string
           created_at: string | null
+          file_attachments: Json | null
           id: string
           message_type: Database["public"]["Enums"]["message_type"]
           metadata: Json | null
@@ -156,6 +214,7 @@ export type Database = {
         Insert: {
           content: string
           created_at?: string | null
+          file_attachments?: Json | null
           id?: string
           message_type: Database["public"]["Enums"]["message_type"]
           metadata?: Json | null
@@ -165,6 +224,7 @@ export type Database = {
         Update: {
           content?: string
           created_at?: string | null
+          file_attachments?: Json | null
           id?: string
           message_type?: Database["public"]["Enums"]["message_type"]
           metadata?: Json | null

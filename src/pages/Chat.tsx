@@ -12,6 +12,8 @@ import { MessageRating } from '@/components/MessageRating';
 import { QueryEscalation } from '@/components/QueryEscalation';
 import { SuggestedQuestions } from '@/components/SuggestedQuestions';
 import { ConfidenceIndicator } from '@/components/ConfidenceIndicator';
+import { FileUpload, type FileUploadData } from '@/components/FileUpload';
+import { FilePreview } from '@/components/FilePreview';
 
 interface Message {
   id: string;
@@ -21,6 +23,7 @@ interface Message {
   session_id: string;
   confidence_score?: number;
   response_source?: string;
+  file_attachments?: FileUploadData[];
   metadata?: {
     suggested_questions?: string[];
   };
@@ -33,6 +36,7 @@ export default function Chat() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>([]);
   const [lastUserQuestion, setLastUserQuestion] = useState('');
+  const [pendingFiles, setPendingFiles] = useState<FileUploadData[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { user } = useAuth();
   const { toast } = useToast();
@@ -160,7 +164,7 @@ export default function Chat() {
 
   const loadMessages = async (sessionId: string) => {
     try {
-      const { data, error } = await supabase
+      const { data: messagesData, error } = await supabase
         .from('messages')
         .select('*')
         .eq('session_id', sessionId)
@@ -168,54 +172,103 @@ export default function Chat() {
 
       if (error) throw error;
       
-      const formattedMessages: Message[] = (data || []).map(msg => ({
-        id: msg.id,
-        content: msg.content,
-        type: msg.message_type === 'user' ? 'user' : 'assistant',
-        timestamp: msg.created_at,
-        session_id: msg.session_id,
-        confidence_score: (msg.metadata as any)?.confidence_score,
-        response_source: (msg.metadata as any)?.response_source,
-        metadata: (msg.metadata as any)
-      }));
+      // Load file attachments for each message
+      const messagesWithFiles = await Promise.all(
+        (messagesData || []).map(async (msg) => {
+          const { data: files } = await supabase
+            .from('file_uploads')
+            .select('*')
+            .eq('message_id', msg.id)
+            .eq('upload_status', 'completed');
+
+          const fileAttachments: FileUploadData[] = (files || []).map(file => ({
+            id: file.id,
+            fileName: file.file_name,
+            fileSize: file.file_size,
+            fileType: file.file_type,
+            storagePath: file.storage_path,
+            uploadStatus: file.upload_status as 'completed',
+            metadata: file.metadata,
+          }));
+
+          return {
+            id: msg.id,
+            content: msg.content,
+            type: msg.message_type === 'user' ? 'user' : 'assistant',
+            timestamp: msg.created_at,
+            session_id: msg.session_id,
+            confidence_score: (msg.metadata as any)?.confidence_score,
+            response_source: (msg.metadata as any)?.response_source,
+            file_attachments: fileAttachments,
+            metadata: (msg.metadata as any)
+          } as Message;
+        })
+      );
       
-      setMessages(formattedMessages);
+      setMessages(messagesWithFiles);
     } catch (error) {
       console.error('Error loading messages:', error);
     }
   };
 
-  const sendMessage = async (messageText?: string) => {
+  const sendMessage = async (messageText?: string, includeFiles = true) => {
     const textToSend = messageText || input.trim();
-    if (!textToSend || !sessionId || !user) return;
+    const filesToAttach = includeFiles ? pendingFiles : [];
+    
+    if (!textToSend && filesToAttach.length === 0) return;
+    if (!sessionId || !user) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
-      content: textToSend,
+      content: textToSend || (filesToAttach.length > 0 ? `Shared ${filesToAttach.length} file(s)` : ''),
       type: 'user',
       timestamp: new Date().toISOString(),
       session_id: sessionId,
+      file_attachments: filesToAttach,
     };
 
     setMessages(prev => [...prev, userMessage]);
     setLastUserQuestion(textToSend);
-    if (!messageText) setInput('');
+    if (!messageText) {
+      setInput('');
+      setPendingFiles([]);
+    }
     setIsLoading(true);
     setSuggestedQuestions([]);
 
     try {
-      await supabase.from('messages').insert({
-        session_id: sessionId,
-        message_type: 'user',
-        content: textToSend,
-      });
+      // Insert message
+      const { data: messageData, error: messageError } = await supabase
+        .from('messages')
+        .insert({
+          session_id: sessionId,
+          message_type: 'user',
+          content: textToSend || `Shared ${filesToAttach.length} file(s)`,
+          file_attachments: filesToAttach.map(f => ({ id: f.id, fileName: f.fileName, fileType: f.fileType })),
+        })
+        .select()
+        .single();
+
+      if (messageError) throw messageError;
+
+      // Link files to message
+      if (filesToAttach.length > 0) {
+        const { error: linkError } = await supabase
+          .from('file_uploads')
+          .update({ message_id: messageData.id })
+          .in('id', filesToAttach.map(f => f.id));
+
+        if (linkError) {
+          console.error('Error linking files to message:', linkError);
+        }
+      }
 
       const isFirstMessage = messages.length === 0;
       if (isFirstMessage) {
         await supabase
           .from('chat_sessions')
           .update({
-            title: textToSend.substring(0, 100),
+            title: textToSend?.substring(0, 100) || 'File Upload',
             updated_at: new Date().toISOString(),
           })
           .eq('id', sessionId);
@@ -230,9 +283,11 @@ export default function Chat() {
 
       const response = await supabase.functions.invoke('chat-assistant', {
         body: {
-          query: textToSend,
+          query: textToSend || `User shared ${filesToAttach.length} file(s): ${filesToAttach.map(f => f.fileName).join(', ')}`,
           sessionId: sessionId,
-          userId: user.id
+          userId: user.id,
+          hasFiles: filesToAttach.length > 0,
+          fileTypes: filesToAttach.map(f => f.fileType)
         }
       });
 
@@ -264,6 +319,17 @@ export default function Chat() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleFileUpload = (fileData: FileUploadData) => {
+    setPendingFiles(prev => [...prev, fileData]);
+    toast({
+      description: `File "${fileData.fileName}" uploaded successfully`,
+    });
+  };
+
+  const removePendingFile = (fileId: string) => {
+    setPendingFiles(prev => prev.filter(f => f.id !== fileId));
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -337,26 +403,41 @@ export default function Chat() {
                   </AvatarFallback>
                 </Avatar>
                 <div className="flex flex-col gap-2 max-w-[70%]">
-                  <div
-                    className={`p-3 rounded-lg ${
-                      message.type === 'user'
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-muted'
-                    }`}
-                  >
-                    <p className="text-sm">{message.content}</p>
-                    <div className="flex items-center justify-between mt-2">
-                      <p className="text-xs opacity-70">
-                        {formatTime(message.timestamp)}
-                      </p>
-                      {message.type === 'assistant' && message.confidence_score && (
-                        <ConfidenceIndicator 
-                          confidence={message.confidence_score}
-                          source={message.response_source}
-                        />
-                      )}
-                    </div>
-                  </div>
+                   <div
+                     className={`p-3 rounded-lg ${
+                       message.type === 'user'
+                         ? 'bg-primary text-primary-foreground'
+                         : 'bg-muted'
+                     }`}
+                   >
+                     {message.content && <p className="text-sm">{message.content}</p>}
+                     
+                     {/* File Attachments */}
+                     {message.file_attachments && message.file_attachments.length > 0 && (
+                       <div className={`${message.content ? 'mt-3' : ''} space-y-2`}>
+                         {message.file_attachments.map((file) => (
+                           <FilePreview
+                             key={file.id}
+                             fileData={file}
+                             showPreview={true}
+                             className="max-w-sm"
+                           />
+                         ))}
+                       </div>
+                     )}
+                     
+                     <div className="flex items-center justify-between mt-2">
+                       <p className="text-xs opacity-70">
+                         {formatTime(message.timestamp)}
+                       </p>
+                       {message.type === 'assistant' && message.confidence_score && (
+                         <ConfidenceIndicator 
+                           confidence={message.confidence_score}
+                           source={message.response_source}
+                         />
+                       )}
+                     </div>
+                   </div>
                   
                   {message.type === 'assistant' && (
                     <div className="flex flex-col gap-2">
@@ -398,14 +479,57 @@ export default function Chat() {
       </div>
 
       {/* Input area */}
-      <div className="border-t bg-background p-4">
+      <div className="border-t bg-background p-4 space-y-4">
         {suggestedQuestions.length > 0 && (
-          <div className="mb-4">
-            <SuggestedQuestions
-              questions={suggestedQuestions}
-              onQuestionSelect={handleSuggestedQuestion}
-            />
+          <SuggestedQuestions
+            questions={suggestedQuestions}
+            onQuestionSelect={handleSuggestedQuestion}
+          />
+        )}
+
+        {/* Pending Files */}
+        {pendingFiles.length > 0 && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">Files to send ({pendingFiles.length})</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setPendingFiles([])}
+                className="text-xs"
+              >
+                Clear all
+              </Button>
+            </div>
+            <div className="grid gap-2 max-h-48 overflow-y-auto">
+              {pendingFiles.map((file) => (
+                <div key={file.id} className="relative">
+                  <FilePreview
+                    fileData={file}
+                    showPreview={false}
+                    className="pr-8"
+                  />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => removePendingFile(file.id)}
+                    className="absolute top-2 right-2 h-6 w-6 p-0"
+                  >
+                    ×
+                  </Button>
+                </div>
+              ))}
+            </div>
           </div>
+        )}
+
+        {/* File Upload */}
+        {sessionId && (
+          <FileUpload
+            sessionId={sessionId}
+            onFileUpload={handleFileUpload}
+            className="mb-4"
+          />
         )}
         
         <div className="flex gap-2">
@@ -417,13 +541,16 @@ export default function Chat() {
             disabled={isLoading}
             className="flex-1"
           />
-          <Button onClick={() => sendMessage()} disabled={isLoading || !input.trim()}>
+          <Button 
+            onClick={() => sendMessage()} 
+            disabled={isLoading || (!input.trim() && pendingFiles.length === 0)}
+          >
             <Send className="h-4 w-4" />
           </Button>
         </div>
         
         {lastUserQuestion && (
-          <div className="mt-3 flex justify-center">
+          <div className="flex justify-center">
             <QueryEscalation 
               sessionId={sessionId || ''} 
               originalQuestion={lastUserQuestion}

@@ -29,7 +29,7 @@ serve(async (req) => {
   }
 
   try {
-    const { query, sessionId, userId } = await req.json();
+    const { query, sessionId, userId, hasFiles = false, fileTypes = [] } = await req.json();
     
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -75,7 +75,7 @@ serve(async (req) => {
         .eq('id', bestMatch.item.id);
     } else {
       // Use Gemini API for AI response
-      const geminiResponse = await callGeminiAPI(query, qaItems);
+      const geminiResponse = await callGeminiAPI(query, qaItems, hasFiles, fileTypes);
       response = geminiResponse.answer;
       confidence = geminiResponse.confidence;
       matchedIntent = detectIntent(query, intentPatterns);
@@ -175,15 +175,29 @@ function detectIntent(query: string, patterns: IntentPattern[]): string {
   return 'general_inquiry';
 }
 
-async function callGeminiAPI(query: string, qaItems: QAItem[]): Promise<{ answer: string, confidence: number }> {
+async function callGeminiAPI(query: string, qaItems: QAItem[], hasFiles: boolean = false, fileTypes: string[] = []): Promise<{ answer: string, confidence: number }> {
   const apiKey = Deno.env.get('GEMINI_API_KEY');
   
   const context = qaItems.map(item => 
     `Q: ${item.question}\nA: ${item.answer}`
   ).slice(0, 10).join('\n\n');
 
+  let fileContext = '';
+  if (hasFiles && fileTypes.length > 0) {
+    const supportedFileTypes = fileTypes.map(type => {
+      if (type.startsWith('image/')) return 'image';
+      if (type.startsWith('video/')) return 'video';
+      if (type.includes('pdf')) return 'PDF document';
+      if (type.includes('document') || type.includes('text/')) return 'document';
+      return 'file';
+    });
+    fileContext = `The user has shared ${fileTypes.length} file(s): ${supportedFileTypes.join(', ')}. Acknowledge these files and offer relevant assistance based on the file types.`;
+  }
+
   const prompt = `
 You are a helpful customer service assistant for a scooter company. Use the following FAQ context to answer the user's question. If the question is not covered in the FAQ, provide a helpful general response.
+
+${fileContext}
 
 FAQ Context:
 ${context}
