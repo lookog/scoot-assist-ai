@@ -48,7 +48,10 @@ const Analytics = () => {
         count: cat.qa_items?.length || 0
       })) || [];
 
-      // Fetch user engagement stats
+      // Update session status first - mark inactive sessions
+      await supabase.rpc('update_session_status');
+
+      // Fetch user engagement stats - ensure consistency with chat review
       const [sessionsResult, messagesResult] = await Promise.all([
         supabase.from('chat_sessions').select('id', { count: 'exact', head: true }),
         supabase.from('messages').select('id', { count: 'exact', head: true }),

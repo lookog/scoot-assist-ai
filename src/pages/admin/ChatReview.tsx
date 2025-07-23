@@ -44,6 +44,9 @@ const ChatReview = () => {
 
   const fetchSessions = async () => {
     try {
+      // Update session status first - mark inactive sessions
+      await supabase.rpc('update_session_status');
+
       let query = supabase
         .from('chat_sessions')
         .select(`
