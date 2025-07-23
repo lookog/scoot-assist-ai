@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { RealtimeChannel } from '@supabase/supabase-js';
 
@@ -17,11 +17,56 @@ export const useRealtime = ({
 }: UseRealtimeProps) => {
   const channelRef = useRef<RealtimeChannel | null>(null);
 
-  useEffect(() => {
-    if (!sessionId) return;
+  // Stable callback references to prevent reconnections
+  const handleNewMessage = useCallback((payload: any) => {
+    console.log('New message received:', payload.new);
+    onNewMessage?.(payload.new);
+  }, [onNewMessage]);
 
-    // Create channel for the specific session
-    const channel = supabase.channel(`session:${sessionId}`, {
+  const handleTypingChange = useCallback(async (payload: any) => {
+    console.log('Typing status changed:', payload);
+    if (!onTypingChange || !sessionId) return;
+    
+    try {
+      const { data } = await supabase
+        .from('typing_status')
+        .select('user_id, is_typing')
+        .eq('session_id', sessionId)
+        .eq('is_typing', true);
+      
+      onTypingChange(data || []);
+    } catch (error) {
+      console.error('Error fetching typing users:', error);
+    }
+  }, [onTypingChange, sessionId]);
+
+  const handleSessionUpdate = useCallback((payload: any) => {
+    console.log('Session updated:', payload.new);
+    onSessionUpdate?.(payload.new);
+  }, [onSessionUpdate]);
+
+  useEffect(() => {
+    if (!sessionId) {
+      // Clean up any existing channel if no sessionId
+      if (channelRef.current) {
+        console.log('Cleaning up realtime channel - no sessionId');
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
+      return;
+    }
+
+    // Clean up existing channel before creating new one
+    if (channelRef.current) {
+      console.log('Cleaning up existing realtime channel');
+      supabase.removeChannel(channelRef.current);
+      channelRef.current = null;
+    }
+
+    console.log('Setting up realtime channel for session:', sessionId);
+
+    // Create a single channel for the session
+    const channel = supabase.channel(`session-${sessionId}`, {
       config: {
         presence: {
           key: sessionId,
@@ -29,7 +74,7 @@ export const useRealtime = ({
       },
     });
 
-    // Listen to new messages
+    // Set up message listener only if callback provided
     if (onNewMessage) {
       channel.on(
         'postgres_changes',
@@ -39,14 +84,11 @@ export const useRealtime = ({
           table: 'messages',
           filter: `session_id=eq.${sessionId}`,
         },
-        (payload) => {
-          console.log('New message received:', payload.new);
-          onNewMessage(payload.new);
-        }
+        handleNewMessage
       );
     }
 
-    // Listen to typing status changes
+    // Set up typing status listener only if callback provided
     if (onTypingChange) {
       channel.on(
         'postgres_changes',
@@ -56,15 +98,11 @@ export const useRealtime = ({
           table: 'typing_status',
           filter: `session_id=eq.${sessionId}`,
         },
-        (payload) => {
-          console.log('Typing status changed:', payload);
-          // Fetch current typing users
-          fetchTypingUsers();
-        }
+        handleTypingChange
       );
     }
 
-    // Listen to session updates
+    // Set up session update listener only if callback provided
     if (onSessionUpdate) {
       channel.on(
         'postgres_changes',
@@ -74,55 +112,44 @@ export const useRealtime = ({
           table: 'chat_sessions',
           filter: `id=eq.${sessionId}`,
         },
-        (payload) => {
-          console.log('Session updated:', payload.new);
-          onSessionUpdate(payload.new);
-        }
+        handleSessionUpdate
       );
     }
-
-    const fetchTypingUsers = async () => {
-      if (!onTypingChange) return;
-      
-      try {
-        const { data } = await supabase
-          .from('typing_status')
-          .select('user_id, is_typing')
-          .eq('session_id', sessionId)
-          .eq('is_typing', true);
-        
-        onTypingChange(data || []);
-      } catch (error) {
-        console.error('Error fetching typing users:', error);
-      }
-    };
 
     // Subscribe to the channel
     channel.subscribe((status) => {
       console.log('Realtime subscription status:', status);
-      if (status === 'SUBSCRIBED') {
-        fetchTypingUsers();
+      
+      // Initial typing users fetch when connected
+      if (status === 'SUBSCRIBED' && onTypingChange) {
+        handleTypingChange({});
       }
     });
 
     channelRef.current = channel;
 
+    // Cleanup function
     return () => {
+      console.log('Cleaning up realtime channel in useEffect cleanup');
       if (channelRef.current) {
-        channelRef.current.unsubscribe();
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
       }
     };
-  }, [sessionId, onNewMessage, onTypingChange, onSessionUpdate]);
+  }, [sessionId]); // Only depend on sessionId, not the callbacks
 
-  const updateTypingStatus = async (isTyping: boolean) => {
+  const updateTypingStatus = useCallback(async (isTyping: boolean) => {
     if (!sessionId) return;
 
     try {
+      const user = await supabase.auth.getUser();
+      if (!user.data.user) return;
+
       const { data: existingStatus } = await supabase
         .from('typing_status')
         .select('id')
         .eq('session_id', sessionId)
-        .eq('user_id', (await supabase.auth.getUser()).data.user?.id)
+        .eq('user_id', user.data.user.id)
         .single();
 
       if (existingStatus) {
@@ -138,14 +165,14 @@ export const useRealtime = ({
           .from('typing_status')
           .insert({
             session_id: sessionId,
-            user_id: (await supabase.auth.getUser()).data.user?.id,
+            user_id: user.data.user.id,
             is_typing: isTyping,
           });
       }
     } catch (error) {
       console.error('Error updating typing status:', error);
     }
-  };
+  }, [sessionId]);
 
   return {
     updateTypingStatus,

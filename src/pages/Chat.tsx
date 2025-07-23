@@ -50,37 +50,44 @@ export default function Chat() {
   const navigate = useNavigate();
   const channelRef = useRef<any>(null);
 
+  // Stable callback references for realtime
+  const handleNewMessage = useCallback((message: any) => {
+    // Only add if it's not from the current user to avoid duplicates
+    if (message.message_type !== 'user') {
+      setMessages(prev => {
+        const exists = prev.find(msg => msg.id === message.id);
+        if (exists) return prev;
+        
+        const newMessage: Message = {
+          id: message.id,
+          content: message.content,
+          type: message.message_type === 'user' ? 'user' : 'assistant',
+          timestamp: message.created_at,
+          session_id: message.session_id,
+          confidence_score: (message.metadata as any)?.confidence_score,
+          response_source: (message.metadata as any)?.response_source,
+          metadata: (message.metadata as any)
+        };
+        
+        return [...prev, newMessage];
+      });
+    }
+  }, []);
+
+  const handleTypingChange = useCallback((users: any[]) => {
+    setTypingUsers(users);
+  }, []);
+
+  const handleSessionUpdate = useCallback((session: any) => {
+    console.log('Session updated:', session);
+  }, []);
+
   // Realtime functionality
   const { updateTypingStatus } = useRealtime({
     sessionId: sessionId,
-    onNewMessage: (message) => {
-      // Only add if it's not from the current user to avoid duplicates
-      if (message.message_type !== 'user') {
-        setMessages(prev => {
-          const exists = prev.find(msg => msg.id === message.id);
-          if (exists) return prev;
-          
-          const newMessage: Message = {
-            id: message.id,
-            content: message.content,
-            type: message.message_type === 'user' ? 'user' : 'assistant',
-            timestamp: message.created_at,
-            session_id: message.session_id,
-            confidence_score: (message.metadata as any)?.confidence_score,
-            response_source: (message.metadata as any)?.response_source,
-            metadata: (message.metadata as any)
-          };
-          
-          return [...prev, newMessage];
-        });
-      }
-    },
-    onTypingChange: (users) => {
-      setTypingUsers(users);
-    },
-    onSessionUpdate: (session) => {
-      console.log('Session updated:', session);
-    },
+    onNewMessage: handleNewMessage,
+    onTypingChange: handleTypingChange,
+    onSessionUpdate: handleSessionUpdate,
   });
 
   const scrollToBottom = () => {
@@ -95,13 +102,18 @@ export default function Chat() {
     if (user) {
       initializeChat();
     }
-    
+  }, [user, urlSessionId]);
+
+  // Separate effect for cleanup to avoid reconnection issues
+  useEffect(() => {
     return () => {
       if (channelRef.current) {
+        console.log('Cleaning up chat channel');
         supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
       }
     };
-  }, [user, urlSessionId]);
+  }, []);
 
   const initializeChat = async () => {
     try {
@@ -154,44 +166,8 @@ export default function Chat() {
       setSessionId(currentSessionId);
       await loadMessages(currentSessionId);
       
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
-      }
-      
-      const channel = supabase
-        .channel(`chat-messages-${currentSessionId}`)
-        .on(
-          'postgres_changes',
-          {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'messages',
-            filter: `session_id=eq.${currentSessionId}`
-          },
-          (payload) => {
-            console.log('New message received:', payload.new);
-            setMessages(prev => {
-              const exists = prev.find(msg => msg.id === payload.new.id);
-              if (exists) return prev;
-              
-              const newMessage: Message = {
-                id: payload.new.id,
-                content: payload.new.content,
-                type: payload.new.message_type === 'user' ? 'user' : 'assistant',
-                timestamp: payload.new.created_at,
-                session_id: payload.new.session_id,
-                confidence_score: (payload.new.metadata as any)?.confidence_score,
-                response_source: (payload.new.metadata as any)?.response_source,
-                metadata: (payload.new.metadata as any)
-              };
-              
-              return [...prev, newMessage];
-            });
-          }
-        )
-        .subscribe();
-
-      channelRef.current = channel;
+      // Remove old realtime subscription handling since we use useRealtime hook now
+      // The useRealtime hook will handle all realtime functionality
     } catch (error) {
       console.error('Error initializing chat:', error);
       toast({
