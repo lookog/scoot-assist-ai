@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Bell, Check, CheckCheck, Trash2, AlertTriangle, Package } from 'lucide-react';
+import { Bell, Check, CheckCheck, Trash2, AlertTriangle, Package, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,6 +8,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { useAdminNotifications } from '@/hooks/useAdminNotifications';
 import { formatDistanceToNow } from 'date-fns';
+import { useNavigate } from 'react-router-dom';
 
 export function AdminNotifications() {
   const {
@@ -18,6 +19,16 @@ export function AdminNotifications() {
     deleteNotification,
   } = useAdminNotifications();
   const [isOpen, setIsOpen] = useState(false);
+  const navigate = useNavigate();
+
+  const handleDrillDown = (notification: any) => {
+    if (notification.type === 'escalation') {
+      navigate('/admin/escalated-queries');
+    } else if (notification.type === 'order_inquiry') {
+      navigate('/admin/order-inquiries');
+    }
+    setIsOpen(false);
+  };
 
   const getNotificationIcon = (type: string) => {
     switch (type) {
@@ -123,7 +134,8 @@ export function AdminNotifications() {
                     <p className="text-sm text-muted-foreground mb-2">
                       {notification.message}
                     </p>
-                    <div className="flex items-center justify-between">
+                    
+                    <div className="flex items-center justify-between mb-2">
                       <Badge variant={getNotificationVariant(notification.type)} className="text-xs">
                         {notification.type.replace('_', ' ')}
                       </Badge>
@@ -157,6 +169,22 @@ export function AdminNotifications() {
                         </div>
                       </>
                     )}
+                    
+                    {/* Drill-down button */}
+                    <div className="flex justify-end mt-3">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDrillDown(notification);
+                        }}
+                        className="h-7 text-xs"
+                      >
+                        <ExternalLink className="h-3 w-3 mr-1" />
+                        View Details
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
               ))

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { supabase } from '@/integrations/supabase/client';
 import { BarChart3, TrendingUp, Users, MessageSquare } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 const Analytics = () => {
   const [analytics, setAnalytics] = useState({
@@ -19,6 +20,7 @@ const Analytics = () => {
     }
   });
   const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchAnalytics();
@@ -97,7 +99,10 @@ const Analytics = () => {
 
       {/* Key Metrics */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
+        <Card 
+          className="cursor-pointer hover:bg-muted/50 transition-colors"
+          onClick={() => navigate('/admin/chat-review')}
+        >
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Sessions</CardTitle>
             <MessageSquare className="h-4 w-4 text-muted-foreground" />
@@ -108,7 +113,10 @@ const Analytics = () => {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card 
+          className="cursor-pointer hover:bg-muted/50 transition-colors"
+          onClick={() => navigate('/admin/chat-review')}
+        >
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Messages</CardTitle>
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
@@ -119,7 +127,10 @@ const Analytics = () => {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card 
+          className="cursor-pointer hover:bg-muted/50 transition-colors"
+          onClick={() => navigate('/admin/escalated-queries')}
+        >
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Escalations</CardTitle>
             <Users className="h-4 w-4 text-muted-foreground" />
@@ -132,7 +143,10 @@ const Analytics = () => {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card 
+          className="cursor-pointer hover:bg-muted/50 transition-colors"
+          onClick={() => navigate('/admin/escalated-queries')}
+        >
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Resolution Rate</CardTitle>
             <BarChart3 className="h-4 w-4 text-muted-foreground" />
@@ -151,13 +165,20 @@ const Analytics = () => {
       <div className="grid gap-6 md:grid-cols-2">
         {/* Top Questions */}
         <Card>
-          <CardHeader>
+          <CardHeader 
+            className="cursor-pointer hover:bg-muted/50 transition-colors"
+            onClick={() => navigate('/admin/faq-management')}
+          >
             <CardTitle>Most Viewed Questions</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
               {analytics.topQuestions.map((item: any, index) => (
-                <div key={index} className="flex justify-between items-start">
+                <div 
+                  key={index} 
+                  className="flex justify-between items-start cursor-pointer hover:bg-muted/30 p-2 rounded transition-colors"
+                  onClick={() => navigate('/admin/faq-management')}
+                >
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{item.question}</p>
                   </div>
@@ -175,13 +196,20 @@ const Analytics = () => {
 
         {/* Category Distribution */}
         <Card>
-          <CardHeader>
+          <CardHeader 
+            className="cursor-pointer hover:bg-muted/50 transition-colors"
+            onClick={() => navigate('/admin/category-management')}
+          >
             <CardTitle>Questions by Category</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
               {analytics.categoryStats.map((category: any, index) => (
-                <div key={index} className="flex justify-between items-center">
+                <div 
+                  key={index} 
+                  className="flex justify-between items-center cursor-pointer hover:bg-muted/30 p-2 rounded transition-colors"
+                  onClick={() => navigate('/admin/category-management')}
+                >
                   <span className="text-sm font-medium">{category.name}</span>
                   <span className="text-sm text-muted-foreground">{category.count} items</span>
                 </div>
