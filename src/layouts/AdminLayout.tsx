@@ -3,6 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { useAdminAuth } from '@/hooks/useAdminAuth';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { AdminNotifications } from '@/components/AdminNotifications';
 import { 
   Menu, 
   Shield, 
@@ -78,6 +79,10 @@ const AdminLayout = ({ children }: AdminLayoutProps) => {
         <div className="mb-4 text-sm">
           <p className="font-medium">{adminData?.full_name}</p>
           <p className="text-muted-foreground">{adminData?.role}</p>
+        </div>
+        <div className="flex items-center gap-2 mb-4">
+          <AdminNotifications />
+          <span className="text-sm text-muted-foreground">Notifications</span>
         </div>
         <Button 
           variant="outline" 

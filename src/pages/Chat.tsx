@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { useRealtime } from '@/hooks/useRealtime';
 import { useToast } from '@/hooks/use-toast';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -14,6 +15,7 @@ import { SuggestedQuestions } from '@/components/SuggestedQuestions';
 import { ConfidenceIndicator } from '@/components/ConfidenceIndicator';
 import { FileUpload, type FileUploadData } from '@/components/FileUpload';
 import { FilePreview } from '@/components/FilePreview';
+import { TypingIndicator } from '@/components/TypingIndicator';
 import OrderInquiryForm from '@/components/OrderInquiryForm';
 
 interface Message {
@@ -39,12 +41,47 @@ export default function Chat() {
   const [lastUserQuestion, setLastUserQuestion] = useState('');
   const [pendingFiles, setPendingFiles] = useState<FileUploadData[]>([]);
   const [showOrderInquiry, setShowOrderInquiry] = useState(false);
+  const [typingUsers, setTypingUsers] = useState<any[]>([]);
+  const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { user } = useAuth();
   const { toast } = useToast();
   const { sessionId: urlSessionId } = useParams();
   const navigate = useNavigate();
   const channelRef = useRef<any>(null);
+
+  // Realtime functionality
+  const { updateTypingStatus } = useRealtime({
+    sessionId: sessionId,
+    onNewMessage: (message) => {
+      // Only add if it's not from the current user to avoid duplicates
+      if (message.message_type !== 'user') {
+        setMessages(prev => {
+          const exists = prev.find(msg => msg.id === message.id);
+          if (exists) return prev;
+          
+          const newMessage: Message = {
+            id: message.id,
+            content: message.content,
+            type: message.message_type === 'user' ? 'user' : 'assistant',
+            timestamp: message.created_at,
+            session_id: message.session_id,
+            confidence_score: (message.metadata as any)?.confidence_score,
+            response_source: (message.metadata as any)?.response_source,
+            metadata: (message.metadata as any)
+          };
+          
+          return [...prev, newMessage];
+        });
+      }
+    },
+    onTypingChange: (users) => {
+      setTypingUsers(users);
+    },
+    onSessionUpdate: (session) => {
+      console.log('Session updated:', session);
+    },
+  });
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -219,6 +256,12 @@ export default function Chat() {
     
     if (!textToSend && filesToAttach.length === 0) return;
     if (!sessionId || !user) return;
+
+    // Stop typing indicator
+    if (isTyping) {
+      setIsTyping(false);
+      updateTypingStatus(false);
+    }
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -477,6 +520,10 @@ export default function Chat() {
             </Card>
           </div>
         )}
+
+        {/* Typing Indicator */}
+        <TypingIndicator typingUsers={typingUsers} className="px-4 pb-2" />
+        
         <div ref={messagesEndRef} />
       </div>
 
@@ -537,7 +584,19 @@ export default function Chat() {
         <div className="flex gap-2">
           <Input
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => {
+              setInput(e.target.value);
+              
+              // Handle typing indicator
+              const hasText = e.target.value.trim().length > 0;
+              if (hasText && !isTyping) {
+                setIsTyping(true);
+                updateTypingStatus(true);
+              } else if (!hasText && isTyping) {
+                setIsTyping(false);
+                updateTypingStatus(false);
+              }
+            }}
             onKeyPress={handleKeyPress}
             placeholder="Type your message..."
             disabled={isLoading}
