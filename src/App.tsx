@@ -23,6 +23,7 @@ import EscalatedQueries from "./pages/admin/EscalatedQueries";
 import Analytics from "./pages/admin/Analytics";
 import OrderManagement from "./pages/admin/OrderManagement";
 import OrderInquiries from "./pages/admin/OrderInquiries";
+import UserManagement from "./pages/admin/UserManagement";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -125,6 +126,13 @@ const App = () => (
                 <AdminProtectedRoute>
                   <AdminLayout>
                     <OrderInquiries />
+                  </AdminLayout>
+                </AdminProtectedRoute>
+              } />
+              <Route path="/admin/users" element={
+                <AdminProtectedRoute>
+                  <AdminLayout>
+                    <UserManagement />
                   </AdminLayout>
                 </AdminProtectedRoute>
               } />
