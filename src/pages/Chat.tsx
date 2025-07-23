@@ -52,26 +52,24 @@ export default function Chat() {
 
   // Stable callback references for realtime
   const handleNewMessage = useCallback((message: any) => {
-    // Only add if it's not from the current user to avoid duplicates
-    if (message.message_type !== 'user') {
-      setMessages(prev => {
-        const exists = prev.find(msg => msg.id === message.id);
-        if (exists) return prev;
-        
-        const newMessage: Message = {
-          id: message.id,
-          content: message.content,
-          type: message.message_type === 'user' ? 'user' : 'assistant',
-          timestamp: message.created_at,
-          session_id: message.session_id,
-          confidence_score: (message.metadata as any)?.confidence_score,
-          response_source: (message.metadata as any)?.response_source,
-          metadata: (message.metadata as any)
-        };
-        
-        return [...prev, newMessage];
-      });
-    }
+    // Add any new message (user or assistant) if it doesn't already exist
+    setMessages(prev => {
+      const exists = prev.find(msg => msg.id === message.id);
+      if (exists) return prev;
+      
+      const newMessage: Message = {
+        id: message.id,
+        content: message.content,
+        type: message.message_type === 'user' ? 'user' : 'assistant',
+        timestamp: message.created_at,
+        session_id: message.session_id,
+        confidence_score: (message.metadata as any)?.confidence_score,
+        response_source: (message.metadata as any)?.response_source,
+        metadata: (message.metadata as any)
+      };
+      
+      return [...prev, newMessage];
+    });
   }, []);
 
   const handleTypingChange = useCallback((users: any[]) => {
@@ -314,21 +312,10 @@ export default function Chat() {
 
       if (response.error) throw response.error;
 
-      const { response: aiResponse, confidence, suggestedQuestions: newSuggestions } = response.data;
+      const { suggestedQuestions: newSuggestions } = response.data;
       
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content: aiResponse,
-        type: 'assistant',
-        timestamp: new Date().toISOString(),
-        session_id: sessionId,
-        confidence_score: confidence,
-        metadata: {
-          suggested_questions: newSuggestions
-        }
-      };
-
-      setMessages(prev => [...prev, assistantMessage]);
+      // Don't create a temporary assistant message here - wait for real-time update
+      // The edge function will save the assistant message to the database
       setSuggestedQuestions(newSuggestions || []);
 
     } catch (error) {

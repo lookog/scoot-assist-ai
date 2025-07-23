@@ -91,23 +91,27 @@ serve(async (req) => {
     const suggestedQuestions = await generateSuggestedQuestions(query, qaItems);
 
     // Save message to database
-    const { data: messageData } = await supabaseClient
+    const { data: messageData, error: messageError } = await supabaseClient
       .from('messages')
       .insert({
         session_id: sessionId,
         message_type: 'assistant',
         content: response,
-        confidence_score: confidence,
-        matched_intent: matchedIntent,
-        related_qa_items: relatedItems,
-        response_source: responseSource,
         metadata: {
           query: query,
-          suggested_questions: suggestedQuestions
+          suggested_questions: suggestedQuestions,
+          confidence_score: confidence,
+          matched_intent: matchedIntent,
+          related_qa_items: relatedItems,
+          response_source: responseSource
         }
       })
       .select()
       .single();
+
+    if (messageError) {
+      console.error('Error saving assistant message:', messageError);
+    }
 
     return new Response(JSON.stringify({
       response,
