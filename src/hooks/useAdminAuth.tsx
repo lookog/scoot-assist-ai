@@ -21,25 +21,32 @@ export const AdminProvider = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     // Set up auth state listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      (event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
         
         if (session?.user) {
-          // Check if user is admin
-          const { data: adminUser } = await supabase
-            .from('admin_users')
-            .select('*')
-            .eq('id', session.user.id)
-            .eq('is_active', true)
-            .single();
-          
-          setAdminData(adminUser);
+          // Defer admin data fetching to avoid deadlocks
+          setTimeout(async () => {
+            try {
+              const { data: adminUser } = await supabase
+                .from('admin_users')
+                .select('*')
+                .eq('id', session.user.id)
+                .eq('is_active', true)
+                .single();
+              
+              setAdminData(adminUser);
+            } catch (error) {
+              console.error('Error fetching admin data:', error);
+              setAdminData(null);
+            }
+            setLoading(false);
+          }, 0);
         } else {
           setAdminData(null);
+          setLoading(false);
         }
-        
-        setLoading(false);
       }
     );
 
@@ -49,14 +56,19 @@ export const AdminProvider = ({ children }: { children: React.ReactNode }) => {
       setUser(session?.user ?? null);
       
       if (session?.user) {
-        const { data: adminUser } = await supabase
-          .from('admin_users')
-          .select('*')
-          .eq('id', session.user.id)
-          .eq('is_active', true)
-          .single();
-        
-        setAdminData(adminUser);
+        try {
+          const { data: adminUser } = await supabase
+            .from('admin_users')
+            .select('*')
+            .eq('id', session.user.id)
+            .eq('is_active', true)
+            .single();
+          
+          setAdminData(adminUser);
+        } catch (error) {
+          console.error('Error fetching admin data:', error);
+          setAdminData(null);
+        }
       }
       
       setLoading(false);
