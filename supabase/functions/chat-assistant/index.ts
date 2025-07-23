@@ -65,7 +65,7 @@ serve(async (req) => {
     console.log('Query:', query);
     console.log('Best match:', bestMatch ? `${bestMatch.confidence.toFixed(3)} - ${bestMatch.item.question}` : 'None');
 
-    if (bestMatch && bestMatch.confidence > 0.4) {
+    if (bestMatch && bestMatch.confidence > 0.3) {
       response = bestMatch.item.answer;
       confidence = bestMatch.confidence;
       responseSource = 'qa_database';
@@ -133,13 +133,20 @@ function findBestMatch(query: string, qaItems: QAItem[]) {
   let highestScore = 0;
 
   for (const item of qaItems) {
-    const score = calculateSimilarity(query.toLowerCase(), item.question.toLowerCase());
+    const questionScore = calculateSimilarity(query.toLowerCase(), item.question.toLowerCase());
     const keywordScore = calculateKeywordMatch(query.toLowerCase(), item.keywords || []);
-    const finalScore = Math.max(score, keywordScore);
+    const semanticScore = calculateSemanticSimilarity(query.toLowerCase(), item.question.toLowerCase());
+    
+    // Weight the different scores: semantic similarity gets highest weight
+    const finalScore = Math.max(
+      questionScore * 0.6, 
+      keywordScore * 0.8,
+      semanticScore * 1.0
+    );
 
     if (finalScore > highestScore) {
       highestScore = finalScore;
-      bestMatch = { item, confidence: finalScore };
+      bestMatch = { item: { ...item, view_count: item.view_count || 0 }, confidence: finalScore };
     }
   }
 
@@ -189,18 +196,23 @@ function calculateKeywordMatch(query: string, keywords: string[]): number {
 }
 
 function areSimilarWords(word1: string, word2: string): boolean {
-  // Handle common word variations
+  // Handle common word variations and semantic similarity
   const synonyms = {
-    'speed': ['velocity', 'pace', 'fast', 'quick', 'mph'],
-    'range': ['distance', 'miles', 'travel', 'reach'],
-    'battery': ['charge', 'power', 'energy'],
-    'waterproof': ['water', 'rain', 'wet', 'weather'],
-    'warranty': ['guarantee', 'coverage', 'protection'],
-    'legal': ['law', 'regulations', 'rules', 'permitted'],
-    'service': ['repair', 'maintenance', 'fix'],
-    'track': ['follow', 'monitor', 'status'],
-    'payment': ['pay', 'cost', 'price', 'billing'],
-    'return': ['refund', 'exchange', 'send back']
+    'speed': ['velocity', 'pace', 'fast', 'quick', 'mph', 'rate'],
+    'range': ['distance', 'miles', 'travel', 'reach', 'mileage'],
+    'battery': ['charge', 'power', 'energy', 'charging'],
+    'waterproof': ['water', 'rain', 'wet', 'weather', 'resistant'],
+    'warranty': ['guarantee', 'coverage', 'protection', 'policy'],
+    'legal': ['law', 'regulations', 'rules', 'permitted', 'street', 'road'],
+    'service': ['repair', 'maintenance', 'fix', 'support'],
+    'track': ['follow', 'monitor', 'status', 'order'],
+    'payment': ['pay', 'cost', 'price', 'billing', 'methods'],
+    'return': ['refund', 'exchange', 'send back', 'policy'],
+    'models': ['types', 'versions', 'variants', 'options', 'scooters', 'products'],
+    'differences': ['compare', 'comparison', 'different', 'features', 'specs'],
+    'features': ['specs', 'specifications', 'capabilities', 'options'],
+    'delivery': ['shipping', 'shipping', 'transport', 'sent'],
+    'accessories': ['parts', 'add-ons', 'extras', 'components']
   };
   
   for (const [key, values] of Object.entries(synonyms)) {
@@ -212,6 +224,50 @@ function areSimilarWords(word1: string, word2: string): boolean {
   }
   
   return false;
+}
+
+function calculateSemanticSimilarity(query: string, question: string): number {
+  // Enhanced semantic matching for better FAQ detection
+  const queryWords = query.toLowerCase().split(/\s+/).filter(word => word.length > 2);
+  const questionWords = question.toLowerCase().split(/\s+/).filter(word => word.length > 2);
+  
+  let semanticMatches = 0;
+  let totalQueryWords = queryWords.length;
+  
+  for (const queryWord of queryWords) {
+    for (const questionWord of questionWords) {
+      // Exact match
+      if (queryWord === questionWord) {
+        semanticMatches += 1;
+        break;
+      }
+      // Semantic similarity using synonyms
+      if (areSimilarWords(queryWord, questionWord)) {
+        semanticMatches += 0.8;
+        break;
+      }
+      // Partial word match (contains)
+      if (queryWord.length > 3 && questionWord.length > 3) {
+        if (queryWord.includes(questionWord) || questionWord.includes(queryWord)) {
+          semanticMatches += 0.6;
+          break;
+        }
+      }
+    }
+  }
+  
+  // Boost score for specific patterns
+  if (query.includes('model') && question.includes('model')) {
+    semanticMatches += 0.5;
+  }
+  if (query.includes('difference') && question.includes('difference')) {
+    semanticMatches += 0.5;
+  }
+  if (query.includes('types') && (question.includes('model') || question.includes('difference'))) {
+    semanticMatches += 0.3;
+  }
+  
+  return Math.min(semanticMatches / totalQueryWords, 1.0);
 }
 
 function findRelatedItems(item: QAItem, allItems: QAItem[]): string[] {
