@@ -7,6 +7,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Send, Bot, User } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
+import { useParams, useNavigate } from "react-router-dom";
 
 interface Message {
   id: string;
@@ -19,11 +20,14 @@ interface Message {
 const Chat = () => {
   const { user } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
+  const { sessionId: urlSessionId } = useParams();
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const channelRef = useRef<any>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -37,48 +41,99 @@ const Chat = () => {
     if (user) {
       initializeChat();
     }
-  }, [user]);
+    return () => {
+      // Cleanup realtime subscription on unmount
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+      }
+    };
+  }, [user, urlSessionId]);
 
   const initializeChat = async () => {
     try {
-      // Create a new chat session
-      const { data: session, error } = await supabase
-        .from('chat_sessions')
-        .insert({
-          user_id: user?.id,
-          title: 'New Chat',
-          is_active: true
-        })
-        .select()
-        .single();
+      let currentSessionId = urlSessionId;
 
-      if (error) throw error;
-      
-      setSessionId(session.id);
+      if (urlSessionId) {
+        // Check if the session exists and belongs to the user
+        const { data: existingSession, error: sessionError } = await supabase
+          .from('chat_sessions')
+          .select('*')
+          .eq('id', urlSessionId)
+          .eq('user_id', user?.id)
+          .single();
+
+        if (sessionError || !existingSession) {
+          console.error('Session not found or unauthorized:', sessionError);
+          navigate('/chat');
+          return;
+        }
+        
+        currentSessionId = existingSession.id;
+      } else {
+        // Check if user has an active session, or create a new one
+        let { data: activeSession } = await supabase
+          .from('chat_sessions')
+          .select('*')
+          .eq('user_id', user?.id)
+          .eq('is_active', true)
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .single();
+
+        if (!activeSession) {
+          // Create a new chat session
+          const { data: newSession, error } = await supabase
+            .from('chat_sessions')
+            .insert({
+              user_id: user?.id,
+              title: 'New Chat',
+              is_active: true
+            })
+            .select()
+            .single();
+
+          if (error) throw error;
+          activeSession = newSession;
+        }
+        
+        currentSessionId = activeSession.id;
+        navigate(`/chat/${currentSessionId}`, { replace: true });
+      }
+
+      setSessionId(currentSessionId);
       
       // Load existing messages for this session
-      loadMessages(session.id);
+      await loadMessages(currentSessionId);
+      
+      // Clean up previous channel
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+      }
       
       // Set up real-time subscription
       const channel = supabase
-        .channel('chat-messages')
+        .channel(`chat-messages-${currentSessionId}`)
         .on(
           'postgres_changes',
           {
             event: 'INSERT',
             schema: 'public',
             table: 'messages',
-            filter: `session_id=eq.${session.id}`
+            filter: `session_id=eq.${currentSessionId}`
           },
           (payload) => {
-            setMessages(prev => [...prev, payload.new as Message]);
+            console.log('New message received:', payload.new);
+            setMessages(prev => {
+              // Avoid duplicates
+              const exists = prev.find(msg => msg.id === payload.new.id);
+              if (exists) return prev;
+              return [...prev, payload.new as Message];
+            });
           }
         )
         .subscribe();
 
-      return () => {
-        supabase.removeChannel(channel);
-      };
+      channelRef.current = channel;
     } catch (error) {
       console.error('Error initializing chat:', error);
       toast({
@@ -109,6 +164,23 @@ const Chat = () => {
 
     setIsLoading(true);
     try {
+      // Update session to set proper title on first message
+      if (messages.length === 0) {
+        await supabase
+          .from('chat_sessions')
+          .update({ 
+            title: newMessage.slice(0, 50) + (newMessage.length > 50 ? '...' : ''),
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', sessionId);
+      } else {
+        // Update session updated_at timestamp
+        await supabase
+          .from('chat_sessions')
+          .update({ updated_at: new Date().toISOString() })
+          .eq('id', sessionId);
+      }
+
       // Add user message
       const { error: userMsgError } = await supabase
         .from('messages')
@@ -136,6 +208,13 @@ const Chat = () => {
           });
 
         if (aiMsgError) throw aiMsgError;
+        
+        // Update session timestamp after AI response
+        await supabase
+          .from('chat_sessions')
+          .update({ updated_at: new Date().toISOString() })
+          .eq('id', sessionId);
+          
         setIsLoading(false);
       }, 1000);
 
