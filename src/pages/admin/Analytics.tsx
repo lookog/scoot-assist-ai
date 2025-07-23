@@ -129,7 +129,7 @@ const Analytics = () => {
 
         <Card 
           className="cursor-pointer hover:bg-muted/50 transition-colors"
-          onClick={() => navigate('/admin/escalated-queries')}
+          onClick={() => navigate('/admin/escalated')}
         >
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Escalations</CardTitle>
@@ -145,7 +145,7 @@ const Analytics = () => {
 
         <Card 
           className="cursor-pointer hover:bg-muted/50 transition-colors"
-          onClick={() => navigate('/admin/escalated-queries')}
+          onClick={() => navigate('/admin/escalated')}
         >
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Resolution Rate</CardTitle>
@@ -167,7 +167,7 @@ const Analytics = () => {
         <Card>
           <CardHeader 
             className="cursor-pointer hover:bg-muted/50 transition-colors"
-            onClick={() => navigate('/admin/faq-management')}
+            onClick={() => navigate('/admin/faq')}
           >
             <CardTitle>Most Viewed Questions</CardTitle>
           </CardHeader>
@@ -177,7 +177,7 @@ const Analytics = () => {
                 <div 
                   key={index} 
                   className="flex justify-between items-start cursor-pointer hover:bg-muted/30 p-2 rounded transition-colors"
-                  onClick={() => navigate('/admin/faq-management')}
+                  onClick={() => navigate('/admin/faq')}
                 >
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{item.question}</p>
@@ -198,7 +198,7 @@ const Analytics = () => {
         <Card>
           <CardHeader 
             className="cursor-pointer hover:bg-muted/50 transition-colors"
-            onClick={() => navigate('/admin/category-management')}
+            onClick={() => navigate('/admin/categories')}
           >
             <CardTitle>Questions by Category</CardTitle>
           </CardHeader>
@@ -208,7 +208,7 @@ const Analytics = () => {
                 <div 
                   key={index} 
                   className="flex justify-between items-center cursor-pointer hover:bg-muted/30 p-2 rounded transition-colors"
-                  onClick={() => navigate('/admin/category-management')}
+                  onClick={() => navigate('/admin/categories')}
                 >
                   <span className="text-sm font-medium">{category.name}</span>
                   <span className="text-sm text-muted-foreground">{category.count} items</span>

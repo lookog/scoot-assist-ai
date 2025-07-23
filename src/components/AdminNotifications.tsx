@@ -23,7 +23,7 @@ export function AdminNotifications() {
 
   const handleDrillDown = (notification: any) => {
     if (notification.type === 'escalation') {
-      navigate('/admin/escalated-queries');
+      navigate('/admin/escalated');
     } else if (notification.type === 'order_inquiry') {
       navigate('/admin/order-inquiries');
     }
