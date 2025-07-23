@@ -300,6 +300,18 @@ const Auth = () => {
               </div>
             </form>
           )}
+          
+          {step === 'auth' && (
+            <div className="mt-6 pt-4 border-t border-border">
+              <Button 
+                variant="link" 
+                className="w-full text-sm text-muted-foreground"
+                onClick={() => window.location.href = '/admin/auth'}
+              >
+                Admin Login
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
