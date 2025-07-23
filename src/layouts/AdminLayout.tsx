@@ -35,6 +35,7 @@ const AdminLayout = ({ children }: AdminLayoutProps) => {
     { name: 'Order Inquiries', href: '/admin/order-inquiries', icon: MessageSquare },
     { name: 'Escalated Queries', href: '/admin/escalated', icon: AlertTriangle },
     { name: 'User Management', href: '/admin/users', icon: Users },
+    { name: 'Chat Review', href: '/admin/chat-review', icon: MessageSquare },
     { name: 'Analytics', href: '/admin/analytics', icon: BarChart3 },
   ];
 

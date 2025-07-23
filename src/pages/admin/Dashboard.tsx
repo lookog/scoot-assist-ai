@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { MessageSquare, HelpCircle, Users, TrendingUp } from 'lucide-react';
 
 const AdminDashboard = () => {
+  const navigate = useNavigate();
   const [stats, setStats] = useState({
     totalUsers: 0,
     totalQuestions: 0,
@@ -83,8 +86,27 @@ const AdminDashboard = () => {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {statCards.map((card) => {
           const Icon = card.icon;
+          const getClickHandler = () => {
+            switch (card.title) {
+              case 'Total Users':
+                return () => navigate('/admin/users');
+              case 'FAQ Items':
+                return () => navigate('/admin/faq');
+              case 'Escalated Queries':
+                return () => navigate('/admin/escalated');
+              case 'Chat Sessions':
+                return () => navigate('/admin/chat-review');
+              default:
+                return undefined;
+            }
+          };
+          
           return (
-            <Card key={card.title}>
+            <Card 
+              key={card.title} 
+              className={getClickHandler() ? "cursor-pointer hover:bg-muted/50 transition-colors" : ""}
+              onClick={getClickHandler()}
+            >
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">{card.title}</CardTitle>
                 <Icon className="h-4 w-4 text-muted-foreground" />
@@ -113,15 +135,34 @@ const AdminDashboard = () => {
             <CardTitle>Quick Actions</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            <button className="w-full text-left p-2 rounded hover:bg-muted">
+            <Button 
+              variant="ghost" 
+              className="w-full justify-start p-2 h-auto"
+              onClick={() => navigate('/admin/faq')}
+            >
               Manage FAQ Items
-            </button>
-            <button className="w-full text-left p-2 rounded hover:bg-muted">
+            </Button>
+            <Button 
+              variant="ghost" 
+              className="w-full justify-start p-2 h-auto"
+              onClick={() => navigate('/admin/escalated')}
+            >
               Review Escalated Queries
-            </button>
-            <button className="w-full text-left p-2 rounded hover:bg-muted">
+            </Button>
+            <Button 
+              variant="ghost" 
+              className="w-full justify-start p-2 h-auto"
+              onClick={() => navigate('/admin/chat-review')}
+            >
+              Review Chat Sessions
+            </Button>
+            <Button 
+              variant="ghost" 
+              className="w-full justify-start p-2 h-auto"
+              onClick={() => navigate('/admin/analytics')}
+            >
               View Analytics
-            </button>
+            </Button>
           </CardContent>
         </Card>
       </div>

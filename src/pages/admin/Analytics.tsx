@@ -26,11 +26,11 @@ const Analytics = () => {
 
   const fetchAnalytics = async () => {
     try {
-      // Fetch top viewed questions
+      // Fetch top viewed questions (handle null view_count)
       const { data: topQuestions } = await supabase
         .from('qa_items')
         .select('question, view_count')
-        .order('view_count', { ascending: false })
+        .order('view_count', { ascending: false, nullsFirst: false })
         .limit(10);
 
       // Fetch category statistics
@@ -162,7 +162,7 @@ const Analytics = () => {
                     <p className="text-sm font-medium truncate">{item.question}</p>
                   </div>
                   <div className="ml-4 text-sm text-muted-foreground">
-                    {item.view_count} views
+                    {item.view_count || 0} views
                   </div>
                 </div>
               ))}

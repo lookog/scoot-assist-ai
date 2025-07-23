@@ -24,6 +24,7 @@ import Analytics from "./pages/admin/Analytics";
 import OrderManagement from "./pages/admin/OrderManagement";
 import OrderInquiries from "./pages/admin/OrderInquiries";
 import UserManagement from "./pages/admin/UserManagement";
+import ChatReview from "./pages/admin/ChatReview";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -133,6 +134,13 @@ const App = () => (
                 <AdminProtectedRoute>
                   <AdminLayout>
                     <UserManagement />
+                  </AdminLayout>
+                </AdminProtectedRoute>
+              } />
+              <Route path="/admin/chat-review" element={
+                <AdminProtectedRoute>
+                  <AdminLayout>
+                    <ChatReview />
                   </AdminLayout>
                 </AdminProtectedRoute>
               } />
