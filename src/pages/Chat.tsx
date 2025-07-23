@@ -7,13 +7,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Send, Bot, User, ArrowLeft } from 'lucide-react';
+import { Send, Bot, User, ArrowLeft, Package } from 'lucide-react';
 import { MessageRating } from '@/components/MessageRating';
 import { QueryEscalation } from '@/components/QueryEscalation';
 import { SuggestedQuestions } from '@/components/SuggestedQuestions';
 import { ConfidenceIndicator } from '@/components/ConfidenceIndicator';
 import { FileUpload, type FileUploadData } from '@/components/FileUpload';
 import { FilePreview } from '@/components/FilePreview';
+import OrderInquiryForm from '@/components/OrderInquiryForm';
 
 interface Message {
   id: string;
@@ -37,6 +38,7 @@ export default function Chat() {
   const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>([]);
   const [lastUserQuestion, setLastUserQuestion] = useState('');
   const [pendingFiles, setPendingFiles] = useState<FileUploadData[]>([]);
+  const [showOrderInquiry, setShowOrderInquiry] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { user } = useAuth();
   const { toast } = useToast();
@@ -542,12 +544,28 @@ export default function Chat() {
             className="flex-1"
           />
           <Button 
+            variant="outline" 
+            onClick={() => setShowOrderInquiry(!showOrderInquiry)}
+            className="px-3"
+          >
+            <Package className="h-4 w-4" />
+          </Button>
+          <Button 
             onClick={() => sendMessage()} 
             disabled={isLoading || (!input.trim() && pendingFiles.length === 0)}
           >
             <Send className="h-4 w-4" />
           </Button>
         </div>
+        
+        {showOrderInquiry && (
+          <div className="mt-4">
+            <OrderInquiryForm 
+              sessionId={sessionId || undefined}
+              onSubmitted={() => setShowOrderInquiry(false)}
+            />
+          </div>
+        )}
         
         {lastUserQuestion && (
           <div className="flex justify-center">

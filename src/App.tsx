@@ -20,6 +20,8 @@ import FAQManagement from "./pages/admin/FAQManagement";
 import CategoryManagement from "./pages/admin/CategoryManagement";
 import EscalatedQueries from "./pages/admin/EscalatedQueries";
 import Analytics from "./pages/admin/Analytics";
+import OrderManagement from "./pages/admin/OrderManagement";
+import OrderInquiries from "./pages/admin/OrderInquiries";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -107,6 +109,20 @@ const App = () => (
                 <AdminProtectedRoute>
                   <AdminLayout>
                     <Analytics />
+                  </AdminLayout>
+                </AdminProtectedRoute>
+              } />
+              <Route path="/admin/orders" element={
+                <AdminProtectedRoute>
+                  <AdminLayout>
+                    <OrderManagement />
+                  </AdminLayout>
+                </AdminProtectedRoute>
+              } />
+              <Route path="/admin/order-inquiries" element={
+                <AdminProtectedRoute>
+                  <AdminLayout>
+                    <OrderInquiries />
                   </AdminLayout>
                 </AdminProtectedRoute>
               } />

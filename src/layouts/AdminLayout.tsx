@@ -12,7 +12,9 @@ import {
   BarChart3, 
   Settings,
   LogOut,
-  Home
+  Home,
+  ShoppingCart,
+  AlertTriangle
 } from 'lucide-react';
 
 interface AdminLayoutProps {
@@ -28,7 +30,9 @@ const AdminLayout = ({ children }: AdminLayoutProps) => {
     { name: 'Dashboard', href: '/admin', icon: Home },
     { name: 'FAQ Management', href: '/admin/faq', icon: HelpCircle },
     { name: 'Categories', href: '/admin/categories', icon: Settings },
-    { name: 'Escalated Queries', href: '/admin/escalated', icon: MessageSquare },
+    { name: 'Order Management', href: '/admin/orders', icon: ShoppingCart },
+    { name: 'Order Inquiries', href: '/admin/order-inquiries', icon: MessageSquare },
+    { name: 'Escalated Queries', href: '/admin/escalated', icon: AlertTriangle },
     { name: 'User Management', href: '/admin/users', icon: Users },
     { name: 'Analytics', href: '/admin/analytics', icon: BarChart3 },
   ];
