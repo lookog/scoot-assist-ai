@@ -17,6 +17,20 @@ const AdminAuth = () => {
     setLoading(true);
 
     try {
+      // Clean up any existing auth state first
+      Object.keys(localStorage).forEach((key) => {
+        if (key.startsWith('supabase.auth.') || key.includes('sb-')) {
+          localStorage.removeItem(key);
+        }
+      });
+
+      // Attempt global sign out first
+      try {
+        await supabase.auth.signOut({ scope: 'global' });
+      } catch (err) {
+        // Continue even if this fails
+      }
+
       // Sign in the user first
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email,
@@ -25,11 +39,11 @@ const AdminAuth = () => {
 
       if (authError) throw authError;
 
-      // Check if user is an admin
+      // Check if user is an admin using the user ID from auth
       const { data: adminData, error: adminError } = await supabase
         .from('admin_users')
         .select('*')
-        .eq('email', email)
+        .eq('id', authData.user.id)
         .eq('is_active', true)
         .single();
 
@@ -43,7 +57,10 @@ const AdminAuth = () => {
         description: `Welcome back, ${adminData.full_name || 'Admin'}!`,
       });
 
-      window.location.href = '/admin';
+      // Force page refresh to ensure clean state
+      setTimeout(() => {
+        window.location.href = '/admin';
+      }, 1000);
     } catch (error: any) {
       toast({
         title: "Login Failed",

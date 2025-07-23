@@ -77,8 +77,15 @@ const Auth = () => {
     setLoading(true);
 
     try {
+      // Clean up any existing auth state first
+      Object.keys(localStorage).forEach((key) => {
+        if (key.startsWith('supabase.auth.') || key.includes('sb-')) {
+          localStorage.removeItem(key);
+        }
+      });
+
       if (isSignUp) {
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email,
           password,
           options: {
@@ -88,17 +95,41 @@ const Auth = () => {
         if (error) throw error;
         
         toast({
-          title: "Check your email",
-          description: "We sent you a confirmation link.",
+          title: "Account created successfully!",
+          description: "You have been automatically signed in.",
         });
+
+        // Force page refresh to ensure clean state
+        if (data.user) {
+          setTimeout(() => {
+            window.location.href = '/';
+          }, 1000);
+        }
       } else {
-        const { error } = await supabase.auth.signInWithPassword({
+        // Attempt global sign out first to clear any stale sessions
+        try {
+          await supabase.auth.signOut({ scope: 'global' });
+        } catch (err) {
+          // Continue even if this fails
+        }
+
+        const { data, error } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
         if (error) throw error;
         
-        window.location.href = '/';
+        toast({
+          title: "Welcome back!",
+          description: "You have been signed in successfully.",
+        });
+
+        // Force page refresh to ensure clean state
+        if (data.user) {
+          setTimeout(() => {
+            window.location.href = '/';
+          }, 1000);
+        }
       }
     } catch (error: any) {
       toast({
@@ -122,12 +153,20 @@ const Auth = () => {
           title: "Development Mode",
           description: "Using development bypass code.",
         });
-        window.location.href = '/';
+        // Clean state and redirect
+        Object.keys(localStorage).forEach((key) => {
+          if (key.startsWith('supabase.auth.') || key.includes('sb-')) {
+            localStorage.removeItem(key);
+          }
+        });
+        setTimeout(() => {
+          window.location.href = '/';
+        }, 1000);
         return;
       }
 
       const formattedPhone = formatPhoneNumber(phoneNumber);
-      const { error } = await supabase.auth.verifyOtp({
+      const { data, error } = await supabase.auth.verifyOtp({
         phone: formattedPhone,
         token: otp,
         type: 'sms'
@@ -135,7 +174,17 @@ const Auth = () => {
 
       if (error) throw error;
 
-      window.location.href = '/';
+      toast({
+        title: "Welcome!",
+        description: "You have been signed in successfully.",
+      });
+
+      // Force page refresh to ensure clean state
+      if (data.user) {
+        setTimeout(() => {
+          window.location.href = '/';
+        }, 1000);
+      }
     } catch (error: any) {
       toast({
         title: "Invalid Code",
