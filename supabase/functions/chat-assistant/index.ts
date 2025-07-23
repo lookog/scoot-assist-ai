@@ -62,11 +62,16 @@ serve(async (req) => {
     let relatedItems: string[] = [];
     let responseSource = 'ai';
 
-    if (bestMatch && bestMatch.confidence > 0.7) {
+    console.log('Query:', query);
+    console.log('Best match:', bestMatch ? `${bestMatch.confidence.toFixed(3)} - ${bestMatch.item.question}` : 'None');
+
+    if (bestMatch && bestMatch.confidence > 0.4) {
       response = bestMatch.item.answer;
       confidence = bestMatch.confidence;
       responseSource = 'qa_database';
       relatedItems = findRelatedItems(bestMatch.item, qaItems);
+      
+      console.log('Using FAQ answer:', response.substring(0, 100) + '...');
       
       // Increment view count
       await supabaseClient
@@ -74,6 +79,7 @@ serve(async (req) => {
         .update({ view_count: bestMatch.item.view_count + 1 })
         .eq('id', bestMatch.item.id);
     } else {
+      console.log('Using Gemini AI response');
       // Use Gemini API for AI response
       const geminiResponse = await callGeminiAPI(query, qaItems, hasFiles, fileTypes);
       response = geminiResponse.answer;
@@ -141,18 +147,71 @@ function findBestMatch(query: string, qaItems: QAItem[]) {
 }
 
 function calculateSimilarity(str1: string, str2: string): number {
-  const words1 = str1.split(' ');
-  const words2 = str2.split(' ');
-  const commonWords = words1.filter(word => words2.includes(word));
-  return commonWords.length / Math.max(words1.length, words2.length);
+  // Remove common stop words and normalize
+  const stopWords = ['what', 'is', 'the', 'are', 'your', 'my', 'do', 'does', 'can', 'have', 'how', 'where', 'when', 'why', 'i', 'you', 'a', 'an', 'and', 'or', 'but', 'of', 'to', 'for', 'with', 'on', 'at', 'by', 'from', 'up', 'about', 'into', 'through', 'during', 'before', 'after', 'above', 'below', 'between', 'among', 'within', 'without', 'along', 'following', 'across', 'behind', 'beyond', 'plus', 'except', 'but', 'than', 'that', 'this', 'these', 'those'];
+  
+  const words1 = str1.toLowerCase().split(/\s+/).filter(word => word.length > 2 && !stopWords.includes(word));
+  const words2 = str2.toLowerCase().split(/\s+/).filter(word => word.length > 2 && !stopWords.includes(word));
+  
+  if (words1.length === 0 || words2.length === 0) return 0;
+  
+  // Calculate exact word matches
+  const exactMatches = words1.filter(word => words2.includes(word)).length;
+  
+  // Calculate partial matches (word contains another word)
+  let partialMatches = 0;
+  for (const word1 of words1) {
+    for (const word2 of words2) {
+      if (word1 !== word2 && (word1.includes(word2) || word2.includes(word1))) {
+        partialMatches += 0.5;
+        break;
+      }
+    }
+  }
+  
+  const totalMatches = exactMatches + partialMatches;
+  return totalMatches / Math.max(words1.length, words2.length);
 }
 
 function calculateKeywordMatch(query: string, keywords: string[]): number {
-  const queryWords = query.split(' ');
+  if (!keywords || keywords.length === 0) return 0;
+  
+  const queryWords = query.toLowerCase().split(/\s+/);
   const matches = keywords.filter(keyword => 
-    queryWords.some(word => word.includes(keyword.toLowerCase()) || keyword.toLowerCase().includes(word))
+    queryWords.some(word => 
+      word.includes(keyword.toLowerCase()) || 
+      keyword.toLowerCase().includes(word) ||
+      // Check for semantic similarity
+      areSimilarWords(word, keyword.toLowerCase())
+    )
   );
-  return matches.length / Math.max(keywords.length, 1);
+  return matches.length / keywords.length;
+}
+
+function areSimilarWords(word1: string, word2: string): boolean {
+  // Handle common word variations
+  const synonyms = {
+    'speed': ['velocity', 'pace', 'fast', 'quick', 'mph'],
+    'range': ['distance', 'miles', 'travel', 'reach'],
+    'battery': ['charge', 'power', 'energy'],
+    'waterproof': ['water', 'rain', 'wet', 'weather'],
+    'warranty': ['guarantee', 'coverage', 'protection'],
+    'legal': ['law', 'regulations', 'rules', 'permitted'],
+    'service': ['repair', 'maintenance', 'fix'],
+    'track': ['follow', 'monitor', 'status'],
+    'payment': ['pay', 'cost', 'price', 'billing'],
+    'return': ['refund', 'exchange', 'send back']
+  };
+  
+  for (const [key, values] of Object.entries(synonyms)) {
+    if ((word1 === key && values.includes(word2)) || 
+        (word2 === key && values.includes(word1)) ||
+        (values.includes(word1) && values.includes(word2))) {
+      return true;
+    }
+  }
+  
+  return false;
 }
 
 function findRelatedItems(item: QAItem, allItems: QAItem[]): string[] {
