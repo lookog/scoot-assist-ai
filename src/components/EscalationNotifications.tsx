@@ -23,6 +23,7 @@ interface EscalationNotificationsProps {
 export function EscalationNotifications({ sessionId }: EscalationNotificationsProps) {
   const [notifications, setNotifications] = useState<EscalationNotification[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [dismissedNotifications, setDismissedNotifications] = useState<Set<string>>(new Set());
   const { user } = useAuth();
   const { toast } = useToast();
 
@@ -35,7 +36,8 @@ export function EscalationNotifications({ sessionId }: EscalationNotificationsPr
           .from('escalated_queries')
           .select('*')
           .eq('user_id', user.id)
-          .eq('status', 'resolved');
+          .eq('status', 'resolved')
+          .not('resolved_at', 'is', null); // Only show truly resolved queries
 
         if (sessionId) {
           query.eq('session_id', sessionId);
@@ -46,19 +48,15 @@ export function EscalationNotifications({ sessionId }: EscalationNotificationsPr
         if (error) throw error;
         
         const resolvedToday = data?.filter(eq => {
-          const resolvedDate = new Date(eq.resolved_at || eq.created_at);
+          const resolvedDate = new Date(eq.resolved_at);
           const today = new Date();
-          return resolvedDate.toDateString() === today.toDateString();
+          return (
+            resolvedDate.toDateString() === today.toDateString() &&
+            !dismissedNotifications.has(eq.id)
+          );
         }) || [];
 
         setNotifications(resolvedToday);
-        
-        if (resolvedToday.length > 0) {
-          toast({
-            title: "✅ Query Resolved",
-            description: `${resolvedToday.length} of your escalated queries have been resolved!`,
-          });
-        }
       } catch (error) {
         console.error('Error checking escalations:', error);
       }
@@ -78,7 +76,12 @@ export function EscalationNotifications({ sessionId }: EscalationNotificationsPr
           filter: `user_id=eq.${user.id}`,
         },
         (payload: any) => {
-          if (payload.new.status === 'resolved' && payload.old.status !== 'resolved') {
+          if (
+            payload.new.status === 'resolved' && 
+            payload.old.status !== 'resolved' &&
+            payload.new.resolved_at &&
+            !dismissedNotifications.has(payload.new.id)
+          ) {
             setNotifications(prev => [...prev, payload.new]);
             toast({
               title: "✅ Query Resolved",
@@ -92,7 +95,18 @@ export function EscalationNotifications({ sessionId }: EscalationNotificationsPr
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user, sessionId, toast]);
+  }, [user, sessionId, dismissedNotifications]);
+
+  const dismissNotification = (notificationId: string) => {
+    setDismissedNotifications(prev => new Set([...prev, notificationId]));
+    setNotifications(prev => prev.filter(n => n.id !== notificationId));
+  };
+
+  const dismissAllNotifications = () => {
+    const allIds = notifications.map(n => n.id);
+    setDismissedNotifications(prev => new Set([...prev, ...allIds]));
+    setNotifications([]);
+  };
 
   if (notifications.length === 0) return null;
 
@@ -117,14 +131,26 @@ export function EscalationNotifications({ sessionId }: EscalationNotificationsPr
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-semibold text-sm">Resolved Queries</h3>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowNotifications(false)}
-                className="h-6 w-6 p-0"
-              >
-                <X className="h-4 w-4" />
-              </Button>
+              <div className="flex items-center gap-2">
+                {notifications.length > 1 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={dismissAllNotifications}
+                    className="text-xs h-6 px-2"
+                  >
+                    Dismiss All
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowNotifications(false)}
+                  className="h-6 w-6 p-0"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
             
             <div className="space-y-3 max-h-60 overflow-y-auto">
@@ -148,6 +174,14 @@ export function EscalationNotifications({ sessionId }: EscalationNotificationsPr
                         </p>
                       )}
                     </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => dismissNotification(notification.id)}
+                      className="h-6 w-6 p-0 text-green-600 hover:text-green-800"
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
                   </div>
                 </div>
               ))}
