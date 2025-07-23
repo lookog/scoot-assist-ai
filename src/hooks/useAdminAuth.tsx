@@ -67,10 +67,22 @@ export const AdminProvider = ({ children }: { children: React.ReactNode }) => {
 
   const signOut = async () => {
     try {
-      await supabase.auth.signOut();
+      // Clean up any existing auth state first
+      Object.keys(localStorage).forEach((key) => {
+        if (key.startsWith('supabase.auth.') || key.includes('sb-')) {
+          localStorage.removeItem(key);
+        }
+      });
+
+      // Attempt global sign out
+      await supabase.auth.signOut({ scope: 'global' });
+      
+      // Force page refresh to ensure clean state
       window.location.href = '/admin/auth';
     } catch (error) {
       console.error('Error signing out:', error);
+      // Force redirect even if signout fails
+      window.location.href = '/admin/auth';
     }
   };
 
